@@ -205,7 +205,7 @@ publishes the GitHub release, and records the site manifest on `main`. The
 `production-release` environment requires approval; ordinary pushes run candidate
 CI only.
 
-Tracking spec: [PerformanceDaddy #2](https://github.com/sarthakagrawal927/performancedaddy/issues/2)
+Tracking spec: [PerformanceDaddy #2](https://github.com/Significant-Hobbies/performancedaddy/issues/2)
 
 ## Measurement limits
 
