@@ -4,7 +4,9 @@ import PerformanceCore
 import SwiftUI
 
 struct LiveWorkloadsView: View {
+    @Environment(\.openWindow) private var openWindow
     @State private var showingStopHistory = false
+    @State private var showingAgentHookSetup = false
     @ObservedObject var model: LiveViewModel
     let page: LivePage
     @State private var showingResourceEvidence = false
@@ -38,6 +40,7 @@ struct LiveWorkloadsView: View {
         .background(PerformanceTheme.fog)
         .helpOverlay()
         .sheet(item: $model.review) { review in StopReviewView(model: model, review: review) }
+        .sheet(isPresented: $showingAgentHookSetup) { AgentHookSetupView() }
         .onChange(of: page) { _, page in
             model.selection = []; model.search = ""
             model.sortOrder = page == .memory ? [KeyPathComparator(\LiveProcess.memory, order: .reverse)] :
@@ -54,6 +57,12 @@ struct LiveWorkloadsView: View {
             }
             DaddyArtwork(topic: page == .agents ? 8 : 5).frame(width: 72, height: 72)
             Spacer()
+            if page == .agents {
+                Button("Insight Agent Sessions") { openWindow(id: "agent-wall") }
+                    .visibleHelp("Open the focused agent activity wall")
+                Button("Set up statuses…") { showingAgentHookSetup = true }
+                    .visibleHelp("Copy local lifecycle hooks for Codex, Claude or Devin")
+            }
             Button { showingHelp = true } label: { Image(systemName: "questionmark.circle") }
                 .accessibilityLabel("Help with processes and measurements")
                 .visibleHelp("Explain columns, memory measurements and safe process actions")
@@ -374,7 +383,7 @@ struct LiveWorkloadsView: View {
                 if page == .agents {
                     Text("CPU, RAM and ports include this agent's observed children. Same-provider wrappers are grouped here; separate launches stay separate. Nested providers and shared resident pages can overlap, so do not sum agent rows.")
                         .font(.caption).foregroundStyle(.secondary)
-                    Text("Recognizes \(AgentIdentity.supportedNames.joined(separator: ", ")). Local processes only; not cloud sessions or conversation status.")
+                    Text("Recognizes \(AgentIdentity.supportedNames.joined(separator: ", ")). The Insight wall adds lifecycle status for locally instrumented Codex, Claude and Devin processes; other agents show status unavailable.")
                         .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
                 }
                 DaddyDetailSection("What is this?") {

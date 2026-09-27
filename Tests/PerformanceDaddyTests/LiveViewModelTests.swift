@@ -27,7 +27,7 @@ final class LiveViewModelTests: XCTestCase {
 
     func testOversizedFamilyMemoryDoesNotOverflow() {
         func member(_ pid: Int32, parent: Int32) -> LiveProcess {
-            LiveProcess(id: .init(pid: pid, started: 10), parent: parent, uid: getuid(), name: "codex", executable: "/opt/bin/codex", directory: "", cpu: 1, memory: UInt64.max)
+            LiveProcess(id: .init(pid: pid, started: 10), parent: parent, uid: getuid(), name: "codex", executable: "/opt/bin/codex", directory: "", cpu: 1, memory: UInt64.max, hasControllingTerminal: true)
         }
         let model = LiveViewModel()
         model.snapshot = snapshot([member(10, parent: 1), member(11, parent: 10)])
@@ -154,12 +154,43 @@ final class LiveViewModelTests: XCTestCase {
             .appendingPathComponent(".local/share/claude/versions/2.1.280").path
         let claude = LiveProcess(id: .init(pid: 12, started: 10), parent: 1, uid: getuid(),
                                  name: "2.1.280", executable: executable, directory: "/tmp",
-                                 cpu: 1, memory: 1_024)
+                                 cpu: 1, memory: 1_024, hasControllingTerminal: true)
         let model = LiveViewModel()
         model.snapshot = snapshot([claude])
         XCTAssertEqual(model.agentCount, 1)
         XCTAssertEqual(model.rows(for: .agents).map(\.id.pid), [12])
         XCTAssertEqual(model.rows(for: .agents).first?.agent, "Claude")
+    }
+
+    func testWallOmitsUninstrumentedDetachedHostsButKeepsTerminalAgents() {
+        let model = LiveViewModel()
+        let daemon = LiveProcess(id: .init(pid: 12, started: 10), parent: 1, uid: getuid(),
+                                 name: "codex", executable: "/opt/bin/codex", directory: "/tmp",
+                                 cpu: 0, memory: 1_024)
+        let interactive = LiveProcess(id: .init(pid: 13, started: 10), parent: 1, uid: getuid(),
+                                      name: "devin", executable: "/opt/bin/devin", directory: "/tmp",
+                                      cpu: 0, memory: 1_024, hasControllingTerminal: true)
+        model.snapshot = snapshot([daemon, interactive])
+        XCTAssertEqual(Set(model.rows(for: .workloads).map(\.id.pid)), [12, 13])
+        XCTAssertEqual(model.rows(for: .agents).map(\.id.pid), [13])
+        XCTAssertEqual(model.agentWallTiles.map(\.id.pid), [13])
+    }
+
+    func testTerminalCodexBelowSharedHostRemainsSeparate() {
+        let model = LiveViewModel()
+        let host = LiveProcess(id: .init(pid: 40, started: 10), parent: 1, uid: getuid(),
+                               name: "codex", executable: "/opt/bin/codex", directory: "/tmp",
+                               cpu: 1, memory: 10_000)
+        let worker = LiveProcess(id: .init(pid: 41, started: 11), parent: 40, uid: getuid(),
+                                 name: "codex", executable: "/opt/bin/codex", directory: "/tmp",
+                                 cpu: 1, memory: 2_000)
+        let terminal = LiveProcess(id: .init(pid: 42, started: 12), parent: 41, uid: getuid(),
+                                   name: "codex", executable: "/opt/bin/codex", directory: "/tmp",
+                                   cpu: 1, memory: 1_000, hasControllingTerminal: true)
+        model.snapshot = snapshot([host, worker, terminal])
+        XCTAssertEqual(model.rows(for: .agents).map(\.id.pid), [42])
+        XCTAssertEqual(model.agentWallTiles.map(\.id.pid), [42])
+        XCTAssertEqual(model.agentWallTiles.first?.process.memory, 1_000)
     }
 
     func testFamilyAggregationAndReviewDoNotDuplicateTargets() {
@@ -241,7 +272,8 @@ final class LiveViewModelTests: XCTestCase {
 
     private func process(_ pid: Int32, parent: Int32 = 1, name: String, cpu: Double) -> LiveProcess {
         LiveProcess(id: .init(pid: pid, started: 10), parent: parent, uid: getuid(), name: name,
-                    executable: "/opt/bin/\(name)", directory: "/tmp", cpu: cpu, memory: 1_024)
+                    executable: "/opt/bin/\(name)", directory: "/tmp", cpu: cpu, memory: 1_024,
+                    hasControllingTerminal: AgentIdentity.label(executable: "/opt/bin/\(name)", processName: name) != nil)
     }
 
     private func snapshot(_ processes: [LiveProcess], headroom: Double = 0.5, scanSeconds: Double = 0.01) -> LiveSnapshot {

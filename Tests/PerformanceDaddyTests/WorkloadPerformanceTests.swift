@@ -14,7 +14,8 @@ final class WorkloadPerformanceTests: XCTestCase {
             return LiveProcess(id: .init(pid: Int32(offset + 100), started: UInt64(offset + 1)),
                 parent: 1, uid: getuid(), name: name, executable: "/opt/developer/tools/\(name)",
                 directory: "/Users/example/Projects/project-\(offset % 20)", cpu: Double(offset % 100),
-                memory: UInt64(offset + 1) * 1_048_576)
+                memory: UInt64(offset + 1) * 1_048_576,
+                hasControllingTerminal: name == "codex")
         }
         let snapshot = LiveSnapshot(date: date, processes: processes,
             system: .init(timestamp: date, usedCPUCores: 1, memoryHeadroomRatio: 0.5,

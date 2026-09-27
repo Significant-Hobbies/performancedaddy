@@ -33,12 +33,25 @@ Listening ports are first-class evidence. Show protocol, local port, bind scope,
 owning workload and whether a listener is loopback-only or reachable from other
 machines. Never infer safety from the port number alone.
 
-Active Codex and Claude sessions are first-class developer workloads. Group
+Active Codex, Claude and Devin sessions are first-class developer workloads. Group
 their agent process trees and show provider, project/cwd, parent terminal or
 IDE, resource use, uptime, related ports and last observed process activity.
-Do not read prompts, replies, environment values or command arguments merely to
-populate this view, and do not equate stored transcript files with live
-sessions.
+Only an owner-enabled prompt hook may derive a short latest-request label for
+this view. Discard the full prompt after deriving the label; do not read replies,
+environment values, command arguments or stored transcripts to populate it.
+Do not equate stored transcript files with live sessions.
+
+The focused Insight Agent Sessions wall uses the same live process families.
+Detached hosts without lifecycle evidence remain in the process inventory rather
+than becoming wall tiles. Terminal-attached agents remain visible when their
+status hooks have not been installed.
+Optional local provider hooks report lifecycle state and a bounded latest-request
+label derived from an opted-in prompt. It distinguishes recent work,
+waiting/stopped, explicit failure, and
+unavailable status; process presence controls whether a tile remains visible.
+The wall fills the screen, including when just one agent is present. Resident
+RAM changes relative tile area within bounds and is an estimate, not unique
+physical memory owned by the agent.
 
 ### Investigate an incident
 

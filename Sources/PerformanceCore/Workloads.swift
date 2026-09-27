@@ -28,6 +28,7 @@ public struct LiveProcess: Identifiable, Sendable {
     public let name: String
     public let executable: String
     public let directory: String
+    public let hasControllingTerminal: Bool
     public let cpu: Double?
     public let memory: UInt64
     public let footprint: UInt64?
@@ -41,10 +42,12 @@ public struct LiveProcess: Identifiable, Sendable {
     public let appPath: String?
     public init(id: ProcessIdentity, parent: Int32, uid: UInt32, name: String,
                 executable: String, directory: String, cpu: Double?, memory: UInt64,
+                hasControllingTerminal: Bool = false,
                 ports: [ListeningPort] = [], portsIncomplete: Bool = false,
                 footprint: UInt64? = nil, diskReadBytes: UInt64? = nil, diskWrittenBytes: UInt64? = nil) {
         self.id = id; self.parent = parent; self.uid = uid; self.name = name
         self.executable = executable; self.directory = directory; self.cpu = cpu
+        self.hasControllingTerminal = hasControllingTerminal
         self.agent = AgentIdentity.label(executable: executable, processName: name)
         self.catalog = ProcessCatalog.match(executable: executable)
         self.appPath = ProcessUnderstanding.appPath(for: executable)
@@ -181,6 +184,9 @@ public struct WorkloadIndex: Sendable {
                 guard visited.insert(item.id).inserted else { return process.id.pid == matching.min() }
                 if let agent = item.agent {
                     if agent != provider { break }
+                    // A terminal client below a detached shared host is its
+                    // own session, not part of the host's resource tile.
+                    if item.hasControllingTerminal != process.hasControllingTerminal { break }
                     matching.append(item.id.pid)
                 }
                 current = parent(of: item)
@@ -241,7 +247,9 @@ public actor WorkloadSampler {
             processes.append(LiveProcess(id: identity, parent: raw.parent, uid: raw.uid,
                                          name: name.isEmpty ? "Process \(pid)" : name,
                                          executable: Self.string(&raw.path), directory: Self.string(&raw.cwd),
-                                         cpu: cpu, memory: raw.memory, ports: sockets[identity]?.0 ?? [],
+                                         cpu: cpu, memory: raw.memory,
+                                         hasControllingTerminal: raw.has_terminal != 0,
+                                         ports: sockets[identity]?.0 ?? [],
                                          portsIncomplete: sockets[identity]?.1 ?? true,
                                          footprint: raw.resource_available != 0 ? raw.footprint : nil,
                                          diskReadBytes: raw.resource_available != 0 ? raw.read_bytes : nil,

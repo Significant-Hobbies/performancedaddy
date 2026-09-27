@@ -2,6 +2,12 @@ import SwiftUI
 
 @main
 struct PerformanceDaddyApp: App {
+    init() {
+        if CommandLine.arguments.dropFirst().first == "--agent-hook" {
+            AgentHookCommand.run()
+            exit(0)
+        }
+    }
     @NSApplicationDelegateAdaptor(PerformanceDaddyDelegate.self) private var delegate
     @StateObject private var live = LiveViewModel()
     @StateObject private var diagnosis = DiagnosisViewModel()
@@ -22,6 +28,13 @@ struct PerformanceDaddyApp: App {
                 Toggle("Automatically Check for Updates", isOn: $updates.automaticallyChecks)
             }
         }
+        WindowGroup(id: "agent-wall") {
+            AgentWallView(model: live)
+                .frame(minWidth: 520, minHeight: 360)
+                .task { live.start() }
+        }
+        .defaultSize(width: 1080, height: 720)
+        .windowStyle(.hiddenTitleBar)
         MenuBarExtra {
             LiveMenu(model: live, updates: updates)
         } label: {

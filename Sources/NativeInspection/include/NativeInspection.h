@@ -6,7 +6,7 @@ typedef struct {
     uint32_t uid;
     uint64_t started, cpu, memory;
     uint64_t footprint, read_bytes, written_bytes;
-    int resource_available;
+    int resource_available, has_terminal;
     char name[256], path[4096], cwd[4096];
 } PDProcess;
 typedef struct {

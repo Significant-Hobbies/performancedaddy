@@ -1,6 +1,15 @@
 {
   "$schema": "fleet.design-review.v1",
   "version": 1,
+  "agentWallReview": {
+    "date": "2026-09-27",
+    "mode": "preserve",
+    "direction": "Owner-supplied Daddy black and mint native system, plus the requested full-screen status wall with RAM-weighted area-filling tiles",
+    "contract": "Show each observed terminal-attached or hook-instrumented local agent family as a full-screen status tile with workspace, host, uptime, last event and an owner-enabled short latest-request label; green only with recent work events, orange for waiting, stopped or unavailable, red for an explicit failure, and remove absent processes. One agent fills the wall.",
+    "evidence": "Native development app AX showed full-screen RAM-weighted tiles for terminal Codex and Devin sessions. Fresh provider hooks changed Devin from Working to Stopped and identified the correct terminal Codex tile with its latest request. Both temporary tiles disappeared when their processes exited. Detached shared Codex hosts remained off the wall.",
+    "checks": "XcodeBuildMCP Release build and full Swift package suite passed: 109 tests, one environment-dependent skip. Native AX review confirmed event transitions, request labels and process-exit disappearance.",
+    "limits": "Provider hooks are opt-in and require a reviewed merge into existing Codex, Claude or Devin configuration. At review time, installed build 10 did not include the wall. Existing sessions without a hook event remain status unavailable until hooks reload or the session restarts. Status and short prompt labels remain in memory and are lost when the app quits. Multiple conversations in one host can share a tile."
+  },
   "appAccessReview": {
     "date": "2026-09-26",
     "mode": "preserve",

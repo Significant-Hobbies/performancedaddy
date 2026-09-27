@@ -11,6 +11,7 @@
 #include <string.h>
 #include <mach/mach_time.h>
 #include <sys/resource.h>
+#include <sys/param.h>
 
 int pd_presence(int32_t pid, uint64_t started) {
     if (pid <= 0 || !started) return -1;
@@ -30,6 +31,7 @@ int pd_process(int32_t pid, PDProcess *out) {
     struct proc_bsdinfo b = {0};
     if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &b, sizeof(b)) != sizeof(b)) return 0;
     out->pid = pid; out->parent = b.pbi_ppid; out->uid = b.pbi_uid;
+    out->has_terminal = b.e_tdev != NODEV && b.e_tdev != 0;
     out->started = b.pbi_start_tvsec * 1000000ULL + b.pbi_start_tvusec;
     proc_name(pid, out->name, sizeof(out->name));
     proc_pidpath(pid, out->path, sizeof(out->path));

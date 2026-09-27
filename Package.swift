@@ -18,7 +18,7 @@ let package = Package(
         .target(name: "PerformanceCore", dependencies: ["NativeInspection"]),
         .executableTarget(
             name: "PerformanceDaddy",
-            dependencies: ["PerformanceCore", .product(name: "Sparkle", package: "Sparkle")],
+            dependencies: ["PerformanceCore", "NativeInspection", .product(name: "Sparkle", package: "Sparkle")],
             resources: [.process("Resources")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),

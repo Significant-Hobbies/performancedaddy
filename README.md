@@ -71,7 +71,43 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
   installer executables. Same-provider wrappers collapse
   into one workload with descendant CPU, resident RAM and ports; sibling
   launches remain separate. Generic Node/Python wrappers may not be identifiable.
-  This is local process evidence, not cloud sessions or conversation activity.
+  This is local process evidence, not cloud sessions. **Insight Agent Sessions**
+  opens a focused full-screen wall. Each observed terminal-attached agent family
+  or locally instrumented background family is a tile; detached, uninstrumented
+  app-server hosts remain in the process list instead of appearing as sessions. Tiles
+  fill the display, with relative area based on observed resident RAM and capped
+  so one process cannot hide the rest. A single agent fills the wall. Green
+  means a recent work event, orange
+  means stopped, waiting for input or status unavailable, and red means an
+  explicit provider failure event. A tile disappears when its process exits.
+  The wall checks process presence every two seconds; new processes appear on
+  the regular live sample. Tiles also show the workspace, latest request label
+  when a prompt hook supplies one, host, uptime and last lifecycle event.
+  Resident pages can be shared across families.
+
+  Use **Set up statuses…** on Agent sessions to copy Codex, Claude or Devin lifecycle
+  hook JSON into the existing user-level hooks file. Merge the event entries;
+  do not replace other settings. The bundled app executable's `--agent-hook`
+  mode finds its local agent ancestor and sends the event, process identity,
+  workspace basename and, for prompt events, a short latest-request label
+  through a local macOS notification. It derives that label from the submitted
+  prompt, then discards the full text. It does not read replies, transcripts,
+  environment values or command arguments. Hook
+  trust/reload is controlled by the provider. An uninstrumented terminal agent remains
+  orange with “Status unavailable”; CPU use alone is not proof of agent work.
+  Working evidence expires after five minutes without another event. Codex
+  does not expose a general crash event through these hooks, so only Claude's
+  `StopFailure` currently turns a tile red. Hook events are best-effort and
+  may be missed if the app is closed or the provider cannot link the hook
+  process to its local agent process. Status is held in memory while the app
+  runs; older sessions may need to reload hooks or restart before they report
+  an event. Codex hooks attach to the nearest matching client process when
+  present. An event owned only by a shared background host cannot identify a
+  terminal session, so its status stays unavailable. Other recognized CLI agents can use the
+  same `--agent-hook "Provider name"` input contract when they expose compatible
+  lifecycle hooks; no provider hook is installed automatically. This remains a
+  process-family view: multiple conversations hosted by one app can share a tile,
+  and its RAM cannot be apportioned reliably among those conversations.
 - **Memory:** five minutes of in-memory RAM estimates, macOS memory pressure,
   swap, compressed memory and the largest resident processes. The menu bar
   retains the RAM readout while the window is closed.

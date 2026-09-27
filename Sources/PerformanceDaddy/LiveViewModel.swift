@@ -69,6 +69,8 @@ final class LiveViewModel: ObservableObject {
     @Published var performingAction = false
     @Published var refreshing = false
     @Published var exportNotice: String?
+    @Published private(set) var agentSignals: [ProcessIdentity: AgentWallSignal] = [:]
+    @Published private(set) var absentAgentProcesses: Set<ProcessIdentity> = []
     private let sampler = WorkloadSampler()
     private var task: Task<Void, Never>?
     private var index = WorkloadIndex([])
@@ -90,6 +92,7 @@ final class LiveViewModel: ObservableObject {
     private var lifecycleLoaded = false
     private var confirmedExits: Set<ProcessIdentity> = []
     private var wakeObserver: NSObjectProtocol?
+    private var agentSignalObserver: NSObjectProtocol?
 
     init(lifecycleStore: LifecycleHistoryStore = LifecycleHistoryStore()) {
         self.lifecycleStore = lifecycleStore
@@ -97,6 +100,27 @@ final class LiveViewModel: ObservableObject {
 
     func start() {
         guard task == nil else { return }
+        if agentSignalObserver == nil {
+            agentSignalObserver = DistributedNotificationCenter.default().addObserver(
+                forName: AgentWallSignal.notification, object: nil, queue: .main
+            ) { [weak self] notification in
+                guard let signal = AgentWallSignal(userInfo: notification.userInfo) else { return }
+                Task { @MainActor in
+                    guard let self else { return }
+                    var updated = signal
+                    if let previous = self.agentSignals[signal.process] {
+                        guard signal.observedAt >= previous.observedAt else { return }
+                        if signal.event == "SessionEnd", previous.event == "StopFailure",
+                           signal.observedAt.timeIntervalSince(previous.observedAt) < 30 { return }
+                        updated.workspace = signal.workspace ?? previous.workspace
+                        updated.taskLabel = signal.taskLabel ?? previous.taskLabel
+                        updated.taskObservedAt = signal.taskObservedAt ?? previous.taskObservedAt
+                    }
+                    self.agentSignals[signal.process] = updated
+                    self.rowCache.removeValue(forKey: .agents)
+                }
+            }
+        }
         if wakeObserver == nil {
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
@@ -143,6 +167,9 @@ final class LiveViewModel: ObservableObject {
         let elapsed = historyOrigin.duration(to: .now).components
         processHistory.observe(result.processes, at: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
         snapshot = result
+        let liveIdentities = Set(result.processes.map(\.id))
+        agentSignals = agentSignals.filter { liveIdentities.contains($0.key) }
+        absentAgentProcesses.formIntersection(liveIdentities)
         selection.formIntersection(Set(result.processes.map(\.id)))
         if let headroom = result.system.memoryHeadroomRatio, headroom.isFinite, (0...1).contains(headroom) {
             memoryHistory.append(MemoryPoint(date: result.date, used: 1 - headroom))
@@ -164,12 +191,12 @@ final class LiveViewModel: ObservableObject {
                                memory: family.reduce(0) { total, process in
                                    let sum = total.addingReportingOverflow(process.memory)
                                    return sum.overflow ? UInt64.max : sum.partialValue
-                               },
+                               }, hasControllingTerminal: root.hasControllingTerminal,
                                ports: Array(Set(family.flatMap(\.ports))).sorted { $0.id < $1.id },
                                portsIncomplete: family.contains(where: \.portsIncomplete))
             }
         }
-        let candidates = page == .agents ? (agentRows ?? []) : all
+        let candidates = page == .agents ? (agentRows ?? []).filter(isObservedAgentSession) : all
         let result = candidates.filter { process in
             guard includeSystem || process.isUserProcess else { return false }
             if page == .ports && process.ports.isEmpty { return false }
@@ -261,7 +288,71 @@ final class LiveViewModel: ObservableObject {
 
     var selected: LiveProcess? { snapshot?.processes.first { selection.contains($0.id) } }
     var portCount: Int { snapshot?.processes.reduce(0) { $0 + $1.ports.count } ?? 0 }
-    var agentCount: Int { agentRoots.count }
+    var agentCount: Int { agentRoots.filter(isObservedAgentSession).count }
+    private func isObservedAgentSession(_ root: LiveProcess) -> Bool {
+        // Codex can execute hooks in a shared, detached app server. Its signal
+        // cannot identify which terminal client owns the event.
+        if root.agent == "Codex" && !root.hasControllingTerminal { return false }
+        return root.hasControllingTerminal || index.descendants(of: root).contains { member in
+            agentSignals[member.id]?.provider == root.agent
+        }
+    }
+    struct AgentWallTile: Identifiable {
+        let process: LiveProcess
+        let activity: AgentWallActivity
+        let workspace: String?
+        let host: String?
+        let runningFor: String?
+        let taskLabel: String?
+        let taskObservedAt: Date?
+        let lastEvent: String?
+        let lastEventAt: Date?
+        var id: ProcessIdentity { process.id }
+    }
+
+    var agentWallTiles: [AgentWallTile] {
+        _ = rows(for: .agents) // Populate the unfiltered family summaries.
+        let all = snapshot?.processes ?? []
+        return (agentRows ?? []).filter { $0.isUserProcess && !absentAgentProcesses.contains($0.id) }.compactMap { root in
+            let rawRoot = all.first(where: { $0.id == root.id }) ?? root
+            let family = index.descendants(of: rawRoot)
+            let signal = family.compactMap { agentSignals[$0.id] }
+                .filter { $0.provider == root.agent }
+                .max { $0.observedAt < $1.observedAt }
+            // An uninstrumented, detached host is a process, not evidence of
+            // a visible agent session. Keep it in the process list, off the wall.
+            guard isObservedAgentSession(rawRoot) else { return nil }
+            let hostProcess = index.ancestors(of: rawRoot).first { $0.agent == nil && $0.appPath != nil }
+                ?? index.ancestors(of: rawRoot).first { $0.agent == nil && $0.name != "launchd" }
+            let host = hostProcess.map { process in
+                process.appPath.map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent } ?? process.name
+            }
+            let directory = signal?.workspace ?? (root.directory.isEmpty || root.directory == "/"
+                ? nil : URL(fileURLWithPath: root.directory).lastPathComponent)
+            let runningFor = ProcessUnderstanding.duration(root.id, at: snapshot?.date ?? Date()).flatMap { duration -> String? in
+                guard duration.isFinite, duration >= 0, duration < Double(Int.max) else { return nil }
+                let seconds = Int(duration)
+                if seconds >= 86_400 { return "\(seconds / 86_400)d \(seconds % 86_400 / 3_600)h" }
+                if seconds >= 3_600 { return "\(seconds / 3_600)h \(seconds % 3_600 / 60)m" }
+                return "\(seconds / 60)m"
+            }
+            return AgentWallTile(process: root, activity: AgentWallActivity.resolve(
+                event: signal?.event, age: Date().timeIntervalSince(signal?.observedAt ?? .distantPast)),
+                workspace: directory, host: host, runningFor: runningFor,
+                taskLabel: signal?.taskLabel, taskObservedAt: signal?.taskObservedAt,
+                lastEvent: signal?.event, lastEventAt: signal?.observedAt)
+        }
+        .sorted { $0.process.memory == $1.process.memory ? $0.id.pid < $1.id.pid : $0.process.memory > $1.process.memory }
+    }
+
+    func checkAgentPresence() async {
+        _ = rows(for: .agents)
+        let identities = (agentRows ?? []).map(\.id)
+        let gone = await Task.detached(priority: .utility) {
+            Set(identities.filter { ProcessPresence.inspect($0) == .gone })
+        }.value
+        absentAgentProcesses = gone
+    }
     var observerSummary: String {
         guard let snapshot, let own = snapshot.processes.first(where: { $0.id.pid == ProcessInfo.processInfo.processIdentifier }) else { return "Monitor measuring" }
         let cpu = own.cpu.map { String(format: "%.1f%% CPU", $0) } ?? "CPU measuring"
