@@ -1,6 +1,6 @@
 # PerformanceDaddy status
 
-## 2026-09-27 — local menu battery refinement
+## 2026-09-27 — public 0.2.8 build 13 installed
 
 The owner requested an even smaller battery mark without a numeric count or
 filled background. Source now draws a fixed-width outline with one colored mark
@@ -8,9 +8,20 @@ per agent through twelve sessions and a proportional strip beyond that. The
 status-item label starts live monitoring when it appears, covering app launches
 that restore no main window. Apple Silicon and Intel Release builds, 18 focused
 tests, 110 full-package passes with one environment-dependent skip, and the
-design check pass. This is a
-local refinement; the installed public build 12 retains the earlier counted
-battery, and the new mark has not been released or visually verified there.
+design check passed. The protected workflow released `v0.2.8-13` from source
+`d1f8415` after exact-source checks, universal build, launch smoke test,
+Developer ID signing, Apple notarization, stapling, signed appcast and live
+download verification. The public DMG SHA-256 is
+`1a08b7f3c7d1cefc66695bff5a45b8026e9cd0cace333819ec841dfb4a721031`.
+
+The independently downloaded public image matched the GitHub release asset and
+`SHA256SUMS`, and Gatekeeper accepted it as Notarized Developer ID. The mounted
+app passed strict signature and Gatekeeper checks. `/Applications/PerformanceDaddy.app`
+is build 13; its executable matches the public image byte for byte and
+XcodeBuildMCP launched it successfully. Build 12 is preserved at
+`~/Applications/PerformanceDaddy backups/PerformanceDaddy-0.2.7-build12.app`.
+The native UI provider's pipe failed to start during installed-build inspection,
+so the final battery appearance and popover remain visually unverified.
 
 ## 2026-09-27 — public 0.2.7 build 12 installed
 
