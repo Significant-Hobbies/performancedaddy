@@ -336,7 +336,7 @@ final class LiveViewModel: ObservableObject {
                 return "Last observed hook: \(lastEvent)"
             }
             if process.agent == "Codex" && process.hasControllingTerminal {
-                return sharedHostHookSeen ? "Codex hook seen on shared host; terminal unlinked" :
+                return sharedHostHookSeen ? "Shared Codex server; resume with --no-daemon" :
                     "No hook linked to this terminal"
             }
             return "No hook from this session since app opened"

@@ -252,11 +252,20 @@ struct AgentHookSetupView: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(configuration, forType: .string)
             }
+            if provider == "Codex" {
+                Text("For accurate status per terminal, start Codex with `codex --no-daemon` or resume a session with `codex resume --no-daemon`. Codex currently runs hooks for default interactive sessions in a shared server, which does not identify the terminal. Existing sessions need to exit and resume. Codex may ask you to review hook changes before they run.")
+                    .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Copy Codex resume command") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString("codex resume --no-daemon", forType: .string)
+                }
+            }
             Text("Keep existing settings. New events appear after the agent reloads its hooks and starts work. Older sessions may need to restart before they send events. The wall shows terminal agent sessions and locally instrumented background agents. Uninstrumented terminal agents stay orange as status unavailable. Shared Codex app servers stay in the process list because their hooks do not identify a terminal client.")
                 .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
         }
         .padding(24)
-        .frame(width: 640, height: 540)
+        .frame(width: 640, height: provider == "Codex" ? 640 : 540)
         .background(PerformanceTheme.fog)
     }
 
