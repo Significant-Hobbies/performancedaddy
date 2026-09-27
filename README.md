@@ -80,10 +80,19 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
   means a recent work event, orange
   means stopped, waiting for input or status unavailable, and red means an
   explicit provider failure event. A tile disappears when its process exits.
-  The wall checks process presence every two seconds; new processes appear on
-  the regular live sample. Tiles also show the workspace, latest request label
-  when a prompt hook supplies one, host, uptime and last lifecycle event.
+  The app checks process presence every two seconds even when the wall is closed;
+  new processes appear on the regular live sample. Tiles also show the
+  workspace, latest request label when a prompt hook supplies one, host, uptime
+  and last lifecycle event.
   Resident pages can be shared across families.
+
+  While PerformanceDaddy runs, its menu bar battery shows the total live agent
+  count and one colored mark per session through twelve agents. Above twelve,
+  the marks become a proportional color strip and the exact count remains.
+  Clicking it shows every agent's exact state, workspace and available latest
+  request, plus a shortcut to the full-screen wall. The same lifecycle evidence
+  drives both views; a green mark is a recent work signal, not a process-presence
+  claim.
 
   Use **Set up statuses…** on Agent sessions to copy Codex, Claude or Devin lifecycle
   hook JSON into the existing user-level hooks file. Merge the event entries;
@@ -110,7 +119,7 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
   and its RAM cannot be apportioned reliably among those conversations.
 - **Memory:** five minutes of in-memory RAM estimates, macOS memory pressure,
   swap, compressed memory and the largest resident processes. The menu bar
-  retains the RAM readout while the window is closed.
+  panel retains the RAM estimate and pressure while the window is closed.
 - **Process resource history:** the inspector shows resident-memory change and
   peak over up to five minutes for the 512 largest processes (150 samples each).
   A large net increase is a review cue, not a leak diagnosis. Histories reset

@@ -22,12 +22,6 @@ struct AgentWallView: View {
         .background(PerformanceTheme.fog)
         .background(AgentWallFullScreenRequest())
         .preferredColorScheme(.dark)
-        .task {
-            while !Task.isCancelled {
-                await model.checkAgentPresence()
-                try? await Task.sleep(for: .seconds(2))
-            }
-        }
     }
 
     private func tileView(_ tile: LiveViewModel.AgentWallTile) -> some View {

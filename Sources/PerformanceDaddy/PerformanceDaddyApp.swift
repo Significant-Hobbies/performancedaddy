@@ -36,10 +36,11 @@ struct PerformanceDaddyApp: App {
         .defaultSize(width: 1080, height: 720)
         .windowStyle(.hiddenTitleBar)
         MenuBarExtra {
-            LiveMenu(model: live, updates: updates)
+            AgentStatusMenu(model: live, updates: updates)
         } label: {
-            Label(live.usedMemory, systemImage: "memorychip")
+            AgentStatusMenuBarLabel(model: live)
         }
+        .menuBarExtraStyle(.window)
     }
 }
 
@@ -53,25 +54,4 @@ final class PerformanceDaddyDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 enum PerformanceAppIcon {
     static let image = DaddyResources.url(forResource: "PerformanceDaddy").flatMap(NSImage.init(contentsOf:))
-}
-
-private struct LiveMenu: View {
-    @ObservedObject var model: LiveViewModel
-    @ObservedObject var updates: AppUpdates
-    @Environment(\.openWindow) private var openWindow
-    var body: some View {
-        Text("RAM estimate: \(model.usedMemory)")
-        Text("Pressure: \(model.snapshot?.pressure ?? "Measuring")")
-        Text("\(model.portCount) open sockets · \(model.agentCount) agent processes")
-        Divider()
-        Button("Open PerformanceDaddy") {
-            openWindow(id: "main")
-            NSApplication.shared.activate(ignoringOtherApps: true)
-        }
-        Button(model.paused ? "Resume monitoring" : "Pause monitoring") { model.paused.toggle() }
-        Button("Check for Updates…") { updates.check() }
-            .disabled(!updates.canCheck || !updates.isIdle)
-        Divider()
-        Button("Quit PerformanceDaddy") { NSApplication.shared.terminate(nil) }
-    }
 }

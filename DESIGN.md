@@ -19,6 +19,17 @@ toolbar, rounded lowercase 17pt brand, 7pt-radius outlined/prominent controls,
 32pt full-width navigation targets, mint 11% selected navigation, flat black lists
 and explicit clickable column headers with accessible direction announcements.
 
+## Agent signal menu bar, owner-selected 2026-09-27
+
+The owner selected Signal from three menu bar directions, then requested a more
+compact battery-shaped mark. Its number is the total live agent sessions; green,
+amber and red marks represent individual sessions in state order up to twelve.
+At higher counts, one continuous proportional color strip preserves a compact
+width. Clicking opens a restrained black panel grouped by state, with the exact
+status, workspace and bounded latest-request label for each agent. The existing
+RAM, pressure, socket and app controls remain in that panel. This is a compact
+view of the agent wall's evidence, not a separate status source.
+
 Reuse original StorageDaddy brand and PageDoodles assets unchanged, as authorized
 by the owner. PerformanceDaddy keeps its own processes, ports, agent families,
 memory evidence and reviewed process actions. StorageDaddy source is unchanged.

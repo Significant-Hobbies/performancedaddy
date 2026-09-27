@@ -73,6 +73,7 @@ final class LiveViewModel: ObservableObject {
     @Published private(set) var absentAgentProcesses: Set<ProcessIdentity> = []
     private let sampler = WorkloadSampler()
     private var task: Task<Void, Never>?
+    private var agentPresenceTask: Task<Void, Never>?
     private var index = WorkloadIndex([])
     private var rowCache: [LivePage: [LiveProcess]] = [:]
     private var agentRows: [LiveProcess]?
@@ -100,6 +101,13 @@ final class LiveViewModel: ObservableObject {
 
     func start() {
         guard task == nil else { return }
+        agentPresenceTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                await self.checkAgentPresence()
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            }
+        }
         if agentSignalObserver == nil {
             agentSignalObserver = DistributedNotificationCenter.default().addObserver(
                 forName: AgentWallSignal.notification, object: nil, queue: .main
@@ -351,7 +359,7 @@ final class LiveViewModel: ObservableObject {
         let gone = await Task.detached(priority: .utility) {
             Set(identities.filter { ProcessPresence.inspect($0) == .gone })
         }.value
-        absentAgentProcesses = gone
+        if gone != absentAgentProcesses { absentAgentProcesses = gone }
     }
     var observerSummary: String {
         guard let snapshot, let own = snapshot.processes.first(where: { $0.id.pid == ProcessInfo.processInfo.processIdentifier }) else { return "Monitor measuring" }

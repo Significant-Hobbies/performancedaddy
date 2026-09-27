@@ -70,7 +70,11 @@ enum AgentHookCommand {
         )
     }
 
-    private static func shortTaskLabel(_ prompt: String) -> String? {
+    static func shortTaskLabel(_ prompt: String) -> String? {
+        // Claude can submit an internal completion notification as a prompt.
+        // It is not a new user request and must not replace the last label.
+        guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            .hasPrefix("<task-notification>") else { return nil }
         let line = prompt.split(whereSeparator: \.isNewline).prefix(12)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty && !$0.hasPrefix("<pasted_content") && !$0.hasPrefix("```") }
