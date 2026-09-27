@@ -1,5 +1,25 @@
 # PerformanceDaddy status
 
+## 2026-09-27 — public 0.2.6 build 11 installed
+
+The protected workflow released `v0.2.6-11` from source `8fb67ec` after
+exact-source candidate checks, a universal build, Developer ID signing,
+launch smoke test, Apple notarization (`a0719022-bbc7-4bc2-a498-e5a9db5185f4`),
+stapling, signed appcast and live download verification. The public DMG SHA-256
+is `82de20aee553ea4ed277146bc5fa64b2bc541f3c5c50ad762fd9e6ca4b4f4bd7`.
+The independently downloaded public artifact matched `SHA256SUMS`; its ticket,
+Gatekeeper assessment and the app's strict signature passed. The installed
+`/Applications/PerformanceDaddy.app` is build 11 and its executable matches the
+released image byte for byte. Build 10 is preserved at
+`~/Applications/PerformanceDaddy backups/PerformanceDaddy-0.2.5-build10.app`.
+
+Codex and Devin user hooks now call the installed app. Fresh sessions of both
+providers showed the correct terminal tile, stopped state and short request
+label in the installed full-screen wall; their tiles disappeared on exit. The
+three earlier terminal sessions observed during development had no hook events,
+so their states were unavailable. Older sessions still require a hook reload or
+restart before the wall can report their lifecycle state.
+
 ## 2026-09-27 — public 0.2.5 build 10 installed
 
 The protected workflow published `v0.2.5-10` from source `cdecb4c` after
