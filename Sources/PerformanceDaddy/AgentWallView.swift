@@ -45,7 +45,7 @@ struct AgentWallView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                Text(tile.process.agent ?? tile.process.name)
+                Text(tile.displayName)
                     .font(.system(size: 22 * scale, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
@@ -114,7 +114,7 @@ struct AgentWallView: View {
             .background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 15))
             .overlay(RoundedRectangle(cornerRadius: 15).stroke(color.opacity(0.8), lineWidth: 2))
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(tile.process.agent ?? tile.process.name), \(tile.activity.rawValue), workspace \(tile.workspace ?? "unavailable"), latest request \(tile.taskLabel ?? "unavailable"), host \(tile.host ?? "unavailable"), running \(tile.runningFor ?? "unknown"), resident RAM \(LiveViewModel.bytes(tile.process.memory))")
+            .accessibilityLabel("\(tile.displayName), \(tile.activity.rawValue), workspace \(tile.workspace ?? "unavailable"), latest request \(tile.taskLabel ?? "unavailable"), host \(tile.host ?? "unavailable"), running \(tile.runningFor ?? "unknown"), resident RAM \(LiveViewModel.bytes(tile.process.memory))")
             .help("\(tile.activity.rawValue) · PID \(tile.id.pid) · resident family RAM estimate. Latest request is a short label from the last prompt hook, not proof of current work. Shared pages may overlap.")
         }
     }
@@ -252,7 +252,7 @@ struct AgentHookSetupView: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(configuration, forType: .string)
             }
-            Text("Keep existing settings. New events appear after the agent reloads its hooks and starts work. Older sessions may need to restart before they send events. The wall shows process families; multiple conversations in one host can share a tile. Uninstrumented terminal agents stay orange as status unavailable. A shared Codex host's event attaches to a terminal session only when one live session has the exact same working directory; otherwise status stays unavailable.")
+            Text("Keep existing settings. New events appear after the agent reloads its hooks and starts work. Older sessions may need to restart before they send events. The wall shows process families; multiple conversations in one host can share a tile. Uninstrumented terminal agents stay orange as status unavailable. Shared Codex host activity appears in its own tile because its hooks do not identify a terminal client.")
                 .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
         }
         .padding(24)

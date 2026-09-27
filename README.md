@@ -74,7 +74,8 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
   This is local process evidence, not cloud sessions. **Insight Agent Sessions**
   opens a focused full-screen wall. Each observed terminal-attached agent family
   or locally instrumented background family is a tile; detached, uninstrumented
-  app-server hosts remain in the process list instead of appearing as sessions. Tiles
+  app-server hosts remain in the process list unless they send a hook. An
+  instrumented shared Codex host has its own clearly labeled tile. Tiles
   fill the display, with relative area based on observed resident RAM and capped
   so one process cannot hide the rest. A single agent fills the wall. Green
   means a recent work event, orange
@@ -116,10 +117,11 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
   process to its local agent process. Status is held in memory while the app
   runs; older sessions may need to reload hooks or restart before they report
   an event. Codex hooks attach to the nearest matching client process when
-  present. If a shared background host owns the event, the wall attributes it
-  to a terminal Codex session only when one live session has the exact same
-  normalized working directory. The hook sends a SHA-256 directory key rather
-  than the path. Multiple sessions in that directory remain status unavailable.
+  present. A shared background host's hook stays with that host because its
+  working directory cannot identify the terminal client. The hook hashes the
+  provider session ID locally so a request label is carried forward only for
+  the same session. Terminal sessions without directly attributable hooks
+  remain status unavailable.
   Other recognized CLI agents can use the
   same `--agent-hook "Provider name"` input contract when they expose compatible
   lifecycle hooks; no provider hook is installed automatically. This remains a

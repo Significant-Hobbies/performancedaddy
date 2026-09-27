@@ -18,11 +18,32 @@ final class AgentWallStatusTests: XCTestCase {
         XCTAssertEqual(AgentWallActivity.resolve(event: "PostToolUseFailure", age: 301), .unavailable)
     }
 
-    func testWorkspaceKeyMatchesNormalizedPathsWithoutExposingThePath() {
-        let key = AgentWorkspaceKey.make("/tmp/project/../project")
-        XCTAssertEqual(key, AgentWorkspaceKey.make("/tmp/project"))
+    func testSessionKeyDoesNotExposeTheSessionID() {
+        let key = AgentSessionKey.make("private-session-id")
+        XCTAssertEqual(key, AgentSessionKey.make("private-session-id"))
         XCTAssertEqual(key?.count, 64)
-        XCTAssertFalse(key?.contains("project") ?? true)
-        XCTAssertNil(AgentWorkspaceKey.make("project"))
+        XCTAssertFalse(key?.contains("private-session-id") ?? true)
+        XCTAssertNil(AgentSessionKey.make(""))
+    }
+
+    func testSharedCodexHostDoesNotCarryAnotherSessionsRequest() throws {
+        let now = Date().timeIntervalSince1970
+        func signal(session: String, event: String, task: String? = nil) throws -> AgentWallSignal {
+            var payload: [String: Any] = [
+                "pid": NSNumber(value: 40), "started": NSNumber(value: 10),
+                "provider": "Codex", "event": event, "timestamp": NSNumber(value: now),
+                "sessionKey": try XCTUnwrap(AgentSessionKey.make(session)),
+                "workspace": session
+            ]
+            payload["taskLabel"] = task
+            return try XCTUnwrap(AgentWallSignal(userInfo: payload))
+        }
+        let first = try signal(session: "one", event: "UserPromptSubmit", task: "First task")
+        XCTAssertEqual(try signal(session: "one", event: "PostToolUse")
+            .carryingForward(from: first).taskLabel, "First task")
+        XCTAssertNil(try signal(session: "two", event: "PostToolUse")
+            .carryingForward(from: first).taskLabel)
+        XCTAssertEqual(try signal(session: "two", event: "PostToolUse")
+            .carryingForward(from: first).workspace, "two")
     }
 }

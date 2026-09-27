@@ -46,13 +46,14 @@ enum AgentHookCommand {
         var payload: [String: Any] = ["pid": found.pid, "started": found.started,
                                       "provider": provider, "event": event,
                                       "timestamp": Date().timeIntervalSince1970]
+        if let sessionID = object["session_id"] as? String,
+           let key = AgentSessionKey.make(sessionID) { payload["sessionKey"] = key }
         let observedCWD = withUnsafeBytes(of: found.cwd) { bytes in
             String(decoding: bytes.prefix(while: { $0 != 0 }), as: UTF8.self)
         }
         if let cwd = (object["cwd"] as? String) ?? (observedCWD.isEmpty ? nil : observedCWD) {
             let name = URL(fileURLWithPath: cwd).lastPathComponent
             if !name.isEmpty && name != "/" { payload["workspace"] = String(name.prefix(64)) }
-            if let key = AgentWorkspaceKey.make(cwd) { payload["workspaceKey"] = key }
         }
         if rawEvent == "UserPromptSubmit", let prompt = object["prompt"] as? String,
            let label = shortTaskLabel(prompt) {

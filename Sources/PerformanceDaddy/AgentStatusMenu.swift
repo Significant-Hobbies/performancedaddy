@@ -247,7 +247,7 @@ private struct AgentStatusRow: View {
             Capsule().fill(color).frame(width: 3)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(tile.process.agent ?? tile.process.name)
+                    Text(tile.displayName)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(PerformanceTheme.ink)
                     Spacer()
@@ -270,6 +270,6 @@ private struct AgentStatusRow: View {
         .background(PerformanceTheme.mint.opacity(0.33), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(PerformanceTheme.divider))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(tile.process.agent ?? tile.process.name), \(tile.activity.rawValue), workspace \(tile.workspace ?? "unavailable"), latest request \(tile.taskLabel ?? "unavailable")")
+        .accessibilityLabel("\(tile.displayName), \(tile.activity.rawValue), workspace \(tile.workspace ?? "unavailable"), latest request \(tile.taskLabel ?? "unavailable")")
     }
 }

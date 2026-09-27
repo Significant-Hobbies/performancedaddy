@@ -193,37 +193,26 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(model.agentWallTiles.first?.process.memory, 1_000)
     }
 
-    func testSharedCodexHookMatchesOnlyOneTerminalInTheExactWorkspace() throws {
-        func codex(_ pid: Int32, terminal: Bool, directory: String) -> LiveProcess {
-            LiveProcess(id: .init(pid: pid, started: 10), parent: 1, uid: getuid(),
+    func testSharedCodexHookStaysWithItsHostEvenInTheSameWorkspace() throws {
+        func codex(_ pid: Int32, parent: Int32 = 1, terminal: Bool, directory: String) -> LiveProcess {
+            LiveProcess(id: .init(pid: pid, started: 10), parent: parent, uid: getuid(),
                         name: "codex", executable: "/opt/bin/codex", directory: directory,
                         cpu: 0, memory: 1_024, hasControllingTerminal: terminal)
         }
-        let host = codex(40, terminal: false, directory: "/tmp")
-        let target = codex(41, terminal: true, directory: "/tmp/one")
-        let other = codex(42, terminal: true, directory: "/tmp/two")
-        let key = try XCTUnwrap(AgentWorkspaceKey.make("/tmp/one"))
+        let host = codex(40, terminal: false, directory: "/tmp/one")
+        let target = codex(41, parent: 40, terminal: true, directory: "/tmp/one")
         let signal = try XCTUnwrap(AgentWallSignal(userInfo: [
             "pid": NSNumber(value: host.id.pid), "started": NSNumber(value: host.id.started),
             "provider": "Codex", "event": "UserPromptSubmit",
-            "timestamp": NSNumber(value: Date().timeIntervalSince1970), "workspaceKey": key
+            "timestamp": NSNumber(value: Date().timeIntervalSince1970)
         ]))
-        let processes = [host, target, other]
-        XCTAssertEqual(LiveViewModel.sharedCodexSignal(
-            for: target, roots: processes, processes: processes,
-            index: WorkloadIndex(processes), signals: [host.id: signal]), signal)
-        XCTAssertNil(LiveViewModel.sharedCodexSignal(
-            for: other, roots: processes, processes: processes,
-            index: WorkloadIndex(processes), signals: [host.id: signal]))
-        let duplicate = codex(43, terminal: true, directory: "/tmp/one")
-        let ambiguous = processes + [duplicate]
-        XCTAssertNil(LiveViewModel.sharedCodexSignal(
-            for: target, roots: ambiguous, processes: ambiguous,
-            index: WorkloadIndex(ambiguous), signals: [host.id: signal]))
-        let directOnly = [target, other]
-        XCTAssertNil(LiveViewModel.sharedCodexSignal(
-            for: target, roots: directOnly, processes: directOnly,
-            index: WorkloadIndex(directOnly), signals: [target.id: signal]))
+        let index = WorkloadIndex([host, target])
+        XCTAssertEqual(LiveViewModel.directAgentSignal(
+            for: host, index: index, signals: [host.id: signal]), signal)
+        XCTAssertNil(LiveViewModel.directAgentSignal(
+            for: target, index: index, signals: [host.id: signal]))
+        XCTAssertNil(LiveViewModel.directAgentSignal(
+            for: host, index: index, signals: [target.id: signal]))
     }
 
     func testFamilyAggregationAndReviewDoNotDuplicateTargets() {

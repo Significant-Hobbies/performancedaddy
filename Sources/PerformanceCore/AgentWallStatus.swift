@@ -1,14 +1,11 @@
 import Foundation
 import CryptoKit
 
-/// A stable equality key for a local workspace path. The path itself never
-/// leaves the hook process through the status notification.
-public enum AgentWorkspaceKey {
-    public static func make(_ path: String) -> String? {
-        guard path.hasPrefix("/") else { return nil }
-        let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
-        guard normalized != "/" else { return nil }
-        return SHA256.hash(data: Data(normalized.utf8))
+/// A local equality key for events from the same provider session.
+public enum AgentSessionKey {
+    public static func make(_ sessionID: String) -> String? {
+        guard !sessionID.isEmpty, sessionID.utf8.count <= 256 else { return nil }
+        return SHA256.hash(data: Data(sessionID.utf8))
             .map { String(format: "%02x", $0) }.joined()
     }
 }
@@ -22,7 +19,7 @@ public struct AgentWallSignal: Sendable, Equatable {
     public let event: String
     public let observedAt: Date
     public var workspace: String?
-    public var workspaceKey: String?
+    public var sessionKey: String?
     public var taskLabel: String?
     public var taskObservedAt: Date?
 
@@ -43,11 +40,25 @@ public struct AgentWallSignal: Sendable, Equatable {
         self.event = event
         self.observedAt = Date(timeIntervalSince1970: timestamp)
         self.workspace = (data["workspace"] as? String).flatMap { $0.count <= 64 ? $0 : nil }
-        self.workspaceKey = (data["workspaceKey"] as? String).flatMap { key in
+        self.sessionKey = (data["sessionKey"] as? String).flatMap { key in
             key.count == 64 && key.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) } ? key : nil
         }
         self.taskLabel = (data["taskLabel"] as? String).flatMap { $0.count <= 96 ? $0 : nil }
         self.taskObservedAt = taskLabel == nil ? nil : observedAt
+    }
+
+    public func carryingForward(from previous: Self) -> Self {
+        var updated = self
+        guard provider == previous.provider else { return updated }
+        let sameSession = provider != "Codex" || (sessionKey != nil && sessionKey == previous.sessionKey)
+        if sameSession { updated.workspace = workspace ?? previous.workspace }
+        // A shared Codex app server can serve unrelated conversations. Never
+        // display one session's request or workspace beside another's event.
+        if sameSession {
+            updated.taskLabel = taskLabel ?? previous.taskLabel
+            updated.taskObservedAt = taskObservedAt ?? previous.taskObservedAt
+        }
+        return updated
     }
 
     public static let allowedEvents: Set<String> = [
