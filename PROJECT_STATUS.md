@@ -1,5 +1,29 @@
 # PerformanceDaddy status
 
+## 2026-09-27 — public 0.2.7 build 12 installed
+
+The protected workflow released `v0.2.7-12` from source `0a94cecb` after
+Apple Silicon and Intel Release builds, 18 focused and 111 full package tests,
+Developer ID signing, notarization, stapling and public artifact checks. The
+independently downloaded public DMG matched the GitHub release checksum and
+passed Gatekeeper. Its SHA-256 is
+`eacbf83baf18bbdd8e36870022623ad9034506ada5f5757381a80bd0043ec82d`.
+The live appcast advertises 0.2.7 build 12 and the exact public DMG URL.
+
+`/Applications/PerformanceDaddy.app` is now build 12. Its executable matches
+the public DMG image byte for byte, its strict signature and Gatekeeper
+assessment pass, and XcodeBuildMCP launched it successfully. Build 11 is
+preserved at `~/Applications/PerformanceDaddy backups/PerformanceDaddy-0.2.6-build11.app`.
+The update adds the compact battery-shaped menu bar count and per-agent state
+marks, a grouped session panel, continuous session-presence refresh while the
+wall is closed, and filtering of Claude task notifications from request labels.
+
+Native UI automation confirms that the installed app is running but cannot
+select a PerformanceDaddy window or its menu panel (`cgWindowNotFound`), even
+after reopening it. The exact installed battery appearance and click-through
+panel remain visually unverified; source builds and tests do not substitute
+for that visual check.
+
 ## 2026-09-27 — public 0.2.6 build 11 installed
 
 The protected workflow released `v0.2.6-11` from source `8fb67ec` after

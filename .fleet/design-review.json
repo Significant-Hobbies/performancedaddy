@@ -15,9 +15,9 @@
     "mode": "preserve",
     "direction": "Owner-selected Signal menu bar direction, refined to a compact battery-shaped mark",
     "contract": "Show the total live agent count and one colored mark per agent through twelve sessions; use a proportional strip above twelve. Open a compact grouped panel with exact state, workspace, available latest-request label, and the existing RAM and app controls.",
-    "evidence": "The earlier three-track development menu bar item rendered at native status-bar size with colored marks and count. The owner then requested the smaller battery shape; that refinement is source-built but awaits installed-bundle visual review.",
-    "checks": "XcodeBuildMCP Apple Silicon and Intel Swift package builds succeeded; the development executable launched; 18 focused and 111 full package tests passed; design-workflow check and git diff --check passed.",
-    "limits": "No signed or installed build contains the menu bar change yet. A source-run executable is not exposed as a selectable app by the native UI automation provider, so the battery panel and exact installed appearance still need release-candidate visual review."
+    "evidence": "The earlier three-track development menu bar item rendered at native status-bar size with colored marks and count. The compact battery refinement shipped in signed, notarized v0.2.7-12. The installed app is running and matches the public DMG executable byte for byte.",
+    "checks": "XcodeBuildMCP Apple Silicon and Intel Swift package builds succeeded; 18 focused and 111 full package tests passed; design-workflow check passed. Public DMG checksum, Gatekeeper, strict installed signature and live appcast passed.",
+    "limits": "Native UI automation reports cgWindowNotFound for the running installed app, including after a reopen. The final battery appearance and click-through panel have not been visually inspected on the installed bundle."
   },
   "appAccessReview": {
     "date": "2026-09-26",
