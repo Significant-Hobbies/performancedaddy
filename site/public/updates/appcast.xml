@@ -3,12 +3,12 @@
     <channel>
         <title>PerformanceDaddy</title>
         <item>
-            <title>0.2.7</title>
-            <pubDate>Sun, 27 Sep 2026 11:17:20 +0000</pubDate>
-            <sparkle:version>12</sparkle:version>
-            <sparkle:shortVersionString>0.2.7</sparkle:shortVersionString>
+            <title>0.2.8</title>
+            <pubDate>Sun, 27 Sep 2026 12:35:33 +0000</pubDate>
+            <sparkle:version>13</sparkle:version>
+            <sparkle:shortVersionString>0.2.8</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://performance.daddyrad.com/updates/performancedaddy-0.2.7-build12-universal.dmg" length="8462893" type="application/octet-stream" sparkle:edSignature="+oac+Mzh6fzzXakhVTgdUSevg74hUmxSsSny/RoZiDeIFgZNGiIqywkeWnC4qEZykPA86p+OHfYA/gZfmtq6DQ=="/>
+            <enclosure url="https://performance.daddyrad.com/updates/performancedaddy-0.2.8-build13-universal.dmg" length="8455849" type="application/octet-stream" sparkle:edSignature="w98LjBdIoZlK+TouER10riRWqXibUEFPW1vb+AAzPgcKj3oMw9GLjC2PQuPWjM5cXyc4gNH/Ziv5nhmkuv/FAg=="/>
         </item>
     </channel>
 </rss>
