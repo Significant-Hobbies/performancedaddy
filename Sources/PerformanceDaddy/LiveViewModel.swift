@@ -324,8 +324,23 @@ final class LiveViewModel: ObservableObject {
         let taskObservedAt: Date?
         let lastEvent: String?
         let lastEventAt: Date?
+        let sharedHostHookSeen: Bool
         var id: ProcessIdentity { process.id }
         var displayName: String { process.agent ?? process.name }
+        var evidenceSummary: String {
+            if let lastEvent {
+                if activity == .unavailable {
+                    return lastEvent == "SessionStart" ? "Session start observed; awaiting work event" :
+                        "Last work event expired; awaiting a new hook"
+                }
+                return "Last observed hook: \(lastEvent)"
+            }
+            if process.agent == "Codex" && process.hasControllingTerminal {
+                return sharedHostHookSeen ? "Codex hook seen on shared host; terminal unlinked" :
+                    "No hook linked to this terminal"
+            }
+            return "No hook from this session since app opened"
+        }
     }
 
     static func directAgentSignal(for root: LiveProcess, index: WorkloadIndex,
@@ -338,6 +353,12 @@ final class LiveViewModel: ObservableObject {
     var agentWallTiles: [AgentWallTile] {
         _ = rows(for: .agents) // Populate the unfiltered family summaries.
         let all = snapshot?.processes ?? []
+        let liveByID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let sharedCodexHookSeen = agentSignals.values.contains { signal in
+            guard signal.provider == "Codex", (0...300).contains(Date().timeIntervalSince(signal.observedAt)),
+                  let source = liveByID[signal.process] else { return false }
+            return source.agent == "Codex" && !source.hasControllingTerminal
+        }
         return (agentRows ?? []).filter { $0.isUserProcess && !absentAgentProcesses.contains($0.id) }.compactMap { root in
             let rawRoot = all.first(where: { $0.id == root.id }) ?? root
             let signal = Self.directAgentSignal(for: rawRoot, index: index, signals: agentSignals)
@@ -362,7 +383,8 @@ final class LiveViewModel: ObservableObject {
                 event: signal?.event, age: Date().timeIntervalSince(signal?.observedAt ?? .distantPast)),
                 workspace: directory, host: host, runningFor: runningFor,
                 taskLabel: signal?.taskLabel, taskObservedAt: signal?.taskObservedAt,
-                lastEvent: signal?.event, lastEventAt: signal?.observedAt)
+                lastEvent: signal?.event, lastEventAt: signal?.observedAt,
+                sharedHostHookSeen: root.agent == "Codex" && signal == nil && sharedCodexHookSeen)
         }
         .sorted { $0.process.memory == $1.process.memory ? $0.id.pid < $1.id.pid : $0.process.memory > $1.process.memory }
     }

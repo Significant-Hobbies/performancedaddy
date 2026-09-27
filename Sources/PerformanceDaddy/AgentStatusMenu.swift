@@ -259,7 +259,7 @@ private struct AgentStatusRow: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(PerformanceTheme.secondaryInk)
                     .lineLimit(1)
-                Text(tile.taskLabel ?? "Latest request unavailable")
+                Text(tile.taskLabel ?? tile.evidenceSummary)
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(tile.taskLabel == nil ? PerformanceTheme.secondaryInk.opacity(0.7) : PerformanceTheme.ink)
                     .lineLimit(2)
@@ -270,6 +270,6 @@ private struct AgentStatusRow: View {
         .background(PerformanceTheme.mint.opacity(0.33), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(PerformanceTheme.divider))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(tile.displayName), \(tile.activity.rawValue), workspace \(tile.workspace ?? "unavailable"), latest request \(tile.taskLabel ?? "unavailable")")
+        .accessibilityLabel("\(tile.displayName), \(tile.activity.rawValue), \(tile.evidenceSummary), workspace \(tile.workspace ?? "unavailable"), latest request \(tile.taskLabel ?? "unavailable")")
     }
 }

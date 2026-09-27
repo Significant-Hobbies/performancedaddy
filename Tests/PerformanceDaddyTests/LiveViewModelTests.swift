@@ -200,6 +200,8 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(model.agentCount, 4)
         XCTAssertEqual(Set(model.agentWallTiles.map(\.id.pid)), [41, 42, 43, 44])
         XCTAssertEqual(model.agentWallTiles.first { $0.id.pid == 41 }?.activity, .unavailable)
+        XCTAssertEqual(model.agentWallTiles.first { $0.id.pid == 41 }?.evidenceSummary,
+                       "Codex hook seen on shared host; terminal unlinked")
     }
 
     func testTerminalCodexBelowSharedHostRemainsSeparate() {

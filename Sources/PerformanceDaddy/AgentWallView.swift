@@ -64,7 +64,7 @@ struct AgentWallView: View {
                         .lineLimit(2)
                         .minimumScaleFactor(0.7)
                 } else {
-                    Text("Awaiting agent event · reload hooks for older sessions")
+                    Text(tile.evidenceSummary)
                         .font(.system(size: 11 * scale, design: .rounded))
                         .foregroundStyle(PerformanceTheme.secondaryInk)
                         .lineLimit(1)
@@ -114,7 +114,7 @@ struct AgentWallView: View {
             .background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 15))
             .overlay(RoundedRectangle(cornerRadius: 15).stroke(color.opacity(0.8), lineWidth: 2))
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(tile.displayName), \(tile.activity.rawValue), workspace \(tile.workspace ?? "unavailable"), latest request \(tile.taskLabel ?? "unavailable"), host \(tile.host ?? "unavailable"), running \(tile.runningFor ?? "unknown"), resident RAM \(LiveViewModel.bytes(tile.process.memory))")
+            .accessibilityLabel("\(tile.displayName), \(tile.activity.rawValue), \(tile.evidenceSummary), workspace \(tile.workspace ?? "unavailable"), latest request \(tile.taskLabel ?? "unavailable"), host \(tile.host ?? "unavailable"), running \(tile.runningFor ?? "unknown"), resident RAM \(LiveViewModel.bytes(tile.process.memory))")
             .help("\(tile.activity.rawValue) · PID \(tile.id.pid) · resident family RAM estimate. Latest request is a short label from the last prompt hook, not proof of current work. Shared pages may overlap.")
         }
     }
