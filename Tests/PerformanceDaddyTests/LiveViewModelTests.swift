@@ -201,7 +201,52 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(Set(model.agentWallTiles.map(\.id.pid)), [41, 42, 43, 44])
         XCTAssertEqual(model.agentWallTiles.first { $0.id.pid == 41 }?.activity, .unavailable)
         XCTAssertEqual(model.agentWallTiles.first { $0.id.pid == 41 }?.evidenceSummary,
-                       "Shared Codex server; resume with --no-daemon")
+                       "Shared Codex server; link this session")
+    }
+
+    func testExplicitCodexLinksKeepSharedHostSessionsSeparate() throws {
+        let model = LiveViewModel()
+        func codex(_ pid: Int32, started: UInt64 = 10, terminal: Bool) -> LiveProcess {
+            LiveProcess(id: .init(pid: pid, started: started), parent: 1, uid: getuid(),
+                        name: "codex", executable: "/opt/bin/codex", directory: "/tmp",
+                        cpu: 0, memory: 1_024, hasControllingTerminal: terminal)
+        }
+        let host = codex(40, terminal: false)
+        let first = codex(41, terminal: true)
+        let second = codex(42, terminal: true)
+        model.snapshot = snapshot([host, first, second])
+        let firstID = "019d0000-0000-7000-8000-000000000001"
+        let secondID = "019d0000-0000-7000-8000-000000000002"
+        func signal(_ session: String, _ event: String, task: String? = nil) throws -> AgentWallSignal {
+            var payload: [String: Any] = [
+                "pid": NSNumber(value: host.id.pid), "started": NSNumber(value: host.id.started),
+                "provider": "Codex", "event": event,
+                "sessionKey": try XCTUnwrap(AgentSessionKey.make(session)),
+                "timestamp": NSNumber(value: Date().timeIntervalSince1970)
+            ]
+            if let task { payload["taskLabel"] = task }
+            return try XCTUnwrap(AgentWallSignal(userInfo: payload))
+        }
+        model.recordAgentSignal(try signal(firstID, "UserPromptSubmit", task: "First task"))
+        model.recordAgentSignal(try signal(secondID, "UserPromptSubmit", task: "Second task"))
+        model.recordAgentSignal(try signal(firstID, "Stop"))
+        XCTAssertEqual(model.agentWallTiles.count, 2)
+        XCTAssertEqual(model.agentWallTiles.first { $0.id == first.id }?.activity, .unavailable)
+        XCTAssertNotNil(model.linkCodexSession("not-a-session", to: first.id))
+        XCTAssertNil(model.linkCodexSession(firstID, to: first.id))
+        XCTAssertNil(model.linkCodexSession(secondID, to: second.id))
+        XCTAssertNotNil(model.linkCodexSession(firstID, to: second.id))
+        let firstTile = try XCTUnwrap(model.agentWallTiles.first { $0.id == first.id })
+        let secondTile = try XCTUnwrap(model.agentWallTiles.first { $0.id == second.id })
+        XCTAssertEqual(firstTile.activity, .stopped)
+        XCTAssertEqual(firstTile.taskLabel, "First task")
+        XCTAssertEqual(secondTile.activity, .working)
+        XCTAssertEqual(secondTile.taskLabel, "Second task")
+
+        let reused = codex(41, started: 11, terminal: true)
+        model.snapshot = snapshot([host, reused, second])
+        XCTAssertFalse(try XCTUnwrap(model.agentWallTiles.first { $0.id == reused.id }).isSessionLinked)
+        XCTAssertEqual(model.agentWallTiles.count, 2)
     }
 
     func testTerminalCodexBelowSharedHostRemainsSeparate() {

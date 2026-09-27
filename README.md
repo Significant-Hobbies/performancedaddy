@@ -117,11 +117,14 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
   process to its local agent process. Status is held in memory while the app
   runs; older sessions may need to reload hooks or restart before they report
   an event. Codex hooks attach to the nearest matching client process when
-  present. A shared background host's hook cannot identify a terminal client,
-  so it does not set a terminal tile's status. The hook hashes the
-  provider session ID locally so a request label is carried forward only for
-  the same session. Terminal sessions without directly attributable hooks
-  remain status unavailable.
+  present. A shared background host's hook cannot identify a terminal client
+  on its own. For an existing Codex terminal, choose **Link Codex Session** on
+  its wall tile and enter the full ID shown by `/status` in that terminal. The
+  app hashes the ID in memory, keeps concurrent host signals separate, and
+  drops the link when the terminal process exits or the app quits. A linked
+  tile needs a hook from that session before it can show a state. Start new
+  Codex terminals with `--no-daemon` for direct process linking. Without a
+  direct hook or an explicit session link, a terminal stays status unavailable.
   Other recognized CLI agents can use the
   same `--agent-hook "Provider name"` input contract when they expose compatible
   lifecycle hooks; no provider hook is installed automatically. This remains a

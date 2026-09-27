@@ -4,6 +4,7 @@ import SwiftUI
 
 struct AgentWallView: View {
     @ObservedObject var model: LiveViewModel
+    @State private var linkTarget: LiveViewModel.AgentWallTile?
 
     var body: some View {
         GeometryReader { geometry in
@@ -22,6 +23,9 @@ struct AgentWallView: View {
         .background(PerformanceTheme.fog)
         .background(AgentWallFullScreenRequest())
         .preferredColorScheme(.dark)
+        .sheet(item: $linkTarget) { tile in
+            CodexSessionLinkSheet(model: model, tile: tile)
+        }
     }
 
     private func tileView(_ tile: LiveViewModel.AgentWallTile) -> some View {
@@ -107,13 +111,22 @@ struct AgentWallView: View {
                 .foregroundStyle(PerformanceTheme.secondaryInk)
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
+                if tile.allowsSessionLink {
+                    Button(tile.isSessionLinked ? "CHANGE SESSION LINK" : "LINK CODEX SESSION") {
+                        linkTarget = tile
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10 * scale, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(PerformanceTheme.ink)
+                    .accessibilityLabel("Link Codex terminal PID \(tile.id.pid) to its session")
+                }
                 Spacer(minLength: 0)
             }
             .padding(18 * scale)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 15))
             .overlay(RoundedRectangle(cornerRadius: 15).stroke(color.opacity(0.8), lineWidth: 2))
-            .accessibilityElement(children: .ignore)
+            .accessibilityElement(children: tile.allowsSessionLink ? .contain : .ignore)
             .accessibilityLabel("\(tile.displayName), \(tile.activity.rawValue), \(tile.evidenceSummary), workspace \(tile.workspace ?? "unavailable"), latest request \(tile.taskLabel ?? "unavailable"), host \(tile.host ?? "unavailable"), running \(tile.runningFor ?? "unknown"), resident RAM \(LiveViewModel.bytes(tile.process.memory))")
             .help("\(tile.activity.rawValue) · PID \(tile.id.pid) · resident family RAM estimate. Latest request is a short label from the last prompt hook, not proof of current work. Shared pages may overlap.")
         }
@@ -153,6 +166,46 @@ struct AgentWallView: View {
         guard let middle = memory.dropFirst(memory.count / 2).first else { return [] }
         let cap = max(64 * 1_048_576, middle * 4)
         return tiles.map { min(cap, max(64 * 1_048_576, Double($0.process.memory))) }
+    }
+}
+
+private struct CodexSessionLinkSheet: View {
+    @ObservedObject var model: LiveViewModel
+    let tile: LiveViewModel.AgentWallTile
+    @Environment(\.dismiss) private var dismiss
+    @State private var sessionID = ""
+    @State private var error: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Link Codex session").font(.title2.bold())
+            Text("In the Codex terminal for \(tile.workspace ?? "PID \(tile.id.pid)"), run /status and copy its full session ID. This links hook events to terminal PID \(tile.id.pid) while that process is running. Change the link if Codex switches sessions. The ID is hashed in memory. Linking reads no prompt or transcript.")
+                .fixedSize(horizontal: false, vertical: true)
+            TextField("Session ID", text: $sessionID)
+                .font(.system(.body, design: .monospaced))
+                .textFieldStyle(.roundedBorder)
+            if let error {
+                Text(error).font(.caption).foregroundStyle(PerformanceTheme.coral)
+            }
+            HStack {
+                if tile.isSessionLinked {
+                    Button("Remove link") {
+                        model.unlinkCodexSession(from: tile.id)
+                        dismiss()
+                    }
+                }
+                Spacer()
+                Button("Cancel") { dismiss() }
+                Button("Link session") {
+                    error = model.linkCodexSession(sessionID, to: tile.id)
+                    if error == nil { dismiss() }
+                }
+                .disabled(sessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+        .background(PerformanceTheme.fog)
     }
 }
 
@@ -253,7 +306,7 @@ struct AgentHookSetupView: View {
                 NSPasteboard.general.setString(configuration, forType: .string)
             }
             if provider == "Codex" {
-                Text("For accurate status per terminal, start Codex with `codex --no-daemon` or resume a session with `codex resume --no-daemon`. Codex currently runs hooks for default interactive sessions in a shared server, which does not identify the terminal. Existing sessions need to exit and resume. Codex may ask you to review hook changes before they run.")
+                Text("For an existing shared-server Codex terminal, choose Link Codex Session on its wall tile and enter the ID shown by /status. For automatic linking in new sessions, start with `codex --no-daemon` or resume with `codex resume --no-daemon`. Codex may ask you to review hook changes before they run.")
                     .font(.caption)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Copy Codex resume command") {

@@ -70,6 +70,8 @@ final class LiveViewModel: ObservableObject {
     @Published var refreshing = false
     @Published var exportNotice: String?
     @Published private(set) var agentSignals: [ProcessIdentity: AgentWallSignal] = [:]
+    @Published private(set) var sharedCodexSignals: [String: AgentWallSignal] = [:]
+    @Published private(set) var codexSessionLinks: [ProcessIdentity: String] = [:]
     @Published private(set) var absentAgentProcesses: Set<ProcessIdentity> = []
     private let sampler = WorkloadSampler()
     private var task: Task<Void, Never>?
@@ -150,6 +152,16 @@ final class LiveViewModel: ObservableObject {
     }
 
     func recordAgentSignal(_ signal: AgentWallSignal) {
+        if signal.provider == "Codex", let key = signal.sessionKey,
+           let source = snapshot?.processes.first(where: { $0.id == signal.process }),
+           source.agent == "Codex", !source.hasControllingTerminal {
+            var sessionSignal = signal
+            if let previous = sharedCodexSignals[key] {
+                guard signal.observedAt >= previous.observedAt else { return }
+                sessionSignal = signal.carryingForward(from: previous)
+            }
+            sharedCodexSignals[key] = sessionSignal
+        }
         var updated = signal
         if let previous = agentSignals[signal.process] {
             guard signal.observedAt >= previous.observedAt else { return }
@@ -159,6 +171,28 @@ final class LiveViewModel: ObservableObject {
         }
         agentSignals[signal.process] = updated
         rowCache.removeValue(forKey: .agents)
+    }
+
+    func linkCodexSession(_ sessionID: String, to process: ProcessIdentity) -> String? {
+        let normalized = sessionID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard UUID(uuidString: normalized) != nil,
+              let key = AgentSessionKey.make(normalized) else {
+            return "Enter the full session ID shown by this Codex terminal."
+        }
+        guard snapshot?.processes.contains(where: {
+            $0.id == process && $0.agent == "Codex" && $0.hasControllingTerminal
+        }) == true else { return "This Codex terminal is no longer running." }
+        let live = Set(snapshot?.processes.map(\.id) ?? [])
+        codexSessionLinks = codexSessionLinks.filter { live.contains($0.key) }
+        guard !codexSessionLinks.contains(where: { $0.key != process && $0.value == key }) else {
+            return "This session is already linked to another terminal."
+        }
+        codexSessionLinks[process] = key
+        return nil
+    }
+
+    func unlinkCodexSession(from process: ProcessIdentity) {
+        codexSessionLinks.removeValue(forKey: process)
     }
 
     func refresh() async {
@@ -185,6 +219,11 @@ final class LiveViewModel: ObservableObject {
         snapshot = result
         let liveIdentities = Set(result.processes.map(\.id))
         agentSignals = agentSignals.filter { liveIdentities.contains($0.key) }
+        sharedCodexSignals = sharedCodexSignals.filter {
+            liveIdentities.contains($0.value.process) &&
+                result.date.timeIntervalSince($0.value.observedAt) < 86_400
+        }
+        codexSessionLinks = codexSessionLinks.filter { liveIdentities.contains($0.key) }
         absentAgentProcesses.formIntersection(liveIdentities)
         selection.formIntersection(Set(result.processes.map(\.id)))
         if let headroom = result.system.memoryHeadroomRatio, headroom.isFinite, (0...1).contains(headroom) {
@@ -325,6 +364,8 @@ final class LiveViewModel: ObservableObject {
         let lastEvent: String?
         let lastEventAt: Date?
         let sharedHostHookSeen: Bool
+        let allowsSessionLink: Bool
+        let isSessionLinked: Bool
         var id: ProcessIdentity { process.id }
         var displayName: String { process.agent ?? process.name }
         var evidenceSummary: String {
@@ -336,7 +377,8 @@ final class LiveViewModel: ObservableObject {
                 return "Last observed hook: \(lastEvent)"
             }
             if process.agent == "Codex" && process.hasControllingTerminal {
-                return sharedHostHookSeen ? "Shared Codex server; resume with --no-daemon" :
+                if isSessionLinked { return "Linked; waiting for this session's next hook" }
+                return sharedHostHookSeen ? "Shared Codex server; link this session" :
                     "No hook linked to this terminal"
             }
             return "No hook from this session since app opened"
@@ -361,7 +403,9 @@ final class LiveViewModel: ObservableObject {
         }
         return (agentRows ?? []).filter { $0.isUserProcess && !absentAgentProcesses.contains($0.id) }.compactMap { root in
             let rawRoot = all.first(where: { $0.id == root.id }) ?? root
-            let signal = Self.directAgentSignal(for: rawRoot, index: index, signals: agentSignals)
+            let directSignal = Self.directAgentSignal(for: rawRoot, index: index, signals: agentSignals)
+            let linkedKey = codexSessionLinks[rawRoot.id]
+            let signal = directSignal ?? linkedKey.flatMap { sharedCodexSignals[$0] }
             // An uninstrumented, detached host is a process, not evidence of
             // a visible agent session. Keep it in the process list, off the wall.
             guard isObservedAgentSession(rawRoot) else { return nil }
@@ -384,7 +428,9 @@ final class LiveViewModel: ObservableObject {
                 workspace: directory, host: host, runningFor: runningFor,
                 taskLabel: signal?.taskLabel, taskObservedAt: signal?.taskObservedAt,
                 lastEvent: signal?.event, lastEventAt: signal?.observedAt,
-                sharedHostHookSeen: root.agent == "Codex" && signal == nil && sharedCodexHookSeen)
+                sharedHostHookSeen: root.agent == "Codex" && signal == nil && sharedCodexHookSeen,
+                allowsSessionLink: root.agent == "Codex" && root.hasControllingTerminal && directSignal == nil,
+                isSessionLinked: linkedKey != nil)
         }
         .sorted { $0.process.memory == $1.process.memory ? $0.id.pid < $1.id.pid : $0.process.memory > $1.process.memory }
     }
