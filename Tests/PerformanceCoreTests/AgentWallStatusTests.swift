@@ -17,4 +17,12 @@ final class AgentWallStatusTests: XCTestCase {
         XCTAssertEqual(AgentWallActivity.resolve(event: "PostCompaction", age: 3), .working)
         XCTAssertEqual(AgentWallActivity.resolve(event: "PostToolUseFailure", age: 301), .unavailable)
     }
+
+    func testWorkspaceKeyMatchesNormalizedPathsWithoutExposingThePath() {
+        let key = AgentWorkspaceKey.make("/tmp/project/../project")
+        XCTAssertEqual(key, AgentWorkspaceKey.make("/tmp/project"))
+        XCTAssertEqual(key?.count, 64)
+        XCTAssertFalse(key?.contains("project") ?? true)
+        XCTAssertNil(AgentWorkspaceKey.make("project"))
+    }
 }

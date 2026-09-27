@@ -52,6 +52,7 @@ enum AgentHookCommand {
         if let cwd = (object["cwd"] as? String) ?? (observedCWD.isEmpty ? nil : observedCWD) {
             let name = URL(fileURLWithPath: cwd).lastPathComponent
             if !name.isEmpty && name != "/" { payload["workspace"] = String(name.prefix(64)) }
+            if let key = AgentWorkspaceKey.make(cwd) { payload["workspaceKey"] = key }
         }
         if rawEvent == "UserPromptSubmit", let prompt = object["prompt"] as? String,
            let label = shortTaskLabel(prompt) {

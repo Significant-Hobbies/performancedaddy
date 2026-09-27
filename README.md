@@ -116,8 +116,11 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
   process to its local agent process. Status is held in memory while the app
   runs; older sessions may need to reload hooks or restart before they report
   an event. Codex hooks attach to the nearest matching client process when
-  present. An event owned only by a shared background host cannot identify a
-  terminal session, so its status stays unavailable. Other recognized CLI agents can use the
+  present. If a shared background host owns the event, the wall attributes it
+  to a terminal Codex session only when one live session has the exact same
+  normalized working directory. The hook sends a SHA-256 directory key rather
+  than the path. Multiple sessions in that directory remain status unavailable.
+  Other recognized CLI agents can use the
   same `--agent-hook "Provider name"` input contract when they expose compatible
   lifecycle hooks; no provider hook is installed automatically. This remains a
   process-family view: multiple conversations hosted by one app can share a tile,

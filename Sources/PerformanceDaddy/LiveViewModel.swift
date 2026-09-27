@@ -318,14 +318,37 @@ final class LiveViewModel: ObservableObject {
         var id: ProcessIdentity { process.id }
     }
 
+    static func sharedCodexSignal(for root: LiveProcess, roots: [LiveProcess],
+                                  processes: [LiveProcess], index: WorkloadIndex,
+                                  signals: [ProcessIdentity: AgentWallSignal]) -> AgentWallSignal? {
+        guard root.agent == "Codex", root.hasControllingTerminal,
+              let key = AgentWorkspaceKey.make(root.directory) else { return nil }
+        // A shared app server can host multiple conversations. Attribute its
+        // hook only if one visible terminal Codex session owns this exact cwd.
+        guard roots.filter({ $0.agent == "Codex" && $0.hasControllingTerminal &&
+            AgentWorkspaceKey.make($0.directory) == key }).count == 1 else { return nil }
+        let byIdentity = Dictionary(processes.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return signals.values.filter { signal in
+            guard signal.provider == "Codex", signal.workspaceKey == key,
+                  let source = byIdentity[signal.process],
+                  let owner = index.agentOwner(of: source) else { return false }
+            return owner.agent == "Codex" && !owner.hasControllingTerminal
+        }.max { $0.observedAt < $1.observedAt }
+    }
+
     var agentWallTiles: [AgentWallTile] {
         _ = rows(for: .agents) // Populate the unfiltered family summaries.
         let all = snapshot?.processes ?? []
+        let roots = agentRoots
         return (agentRows ?? []).filter { $0.isUserProcess && !absentAgentProcesses.contains($0.id) }.compactMap { root in
             let rawRoot = all.first(where: { $0.id == root.id }) ?? root
             let family = index.descendants(of: rawRoot)
-            let signal = family.compactMap { agentSignals[$0.id] }
+            let directSignal = family.compactMap { agentSignals[$0.id] }
                 .filter { $0.provider == root.agent }
+                .max { $0.observedAt < $1.observedAt }
+            let sharedSignal = Self.sharedCodexSignal(
+                for: rawRoot, roots: roots, processes: all, index: index, signals: agentSignals)
+            let signal = [directSignal, sharedSignal].compactMap { $0 }
                 .max { $0.observedAt < $1.observedAt }
             // An uninstrumented, detached host is a process, not evidence of
             // a visible agent session. Keep it in the process list, off the wall.
