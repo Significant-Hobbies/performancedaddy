@@ -1,5 +1,17 @@
 # PerformanceDaddy status
 
+## 2026-09-27 — local menu battery refinement
+
+The owner requested an even smaller battery mark without a numeric count or
+filled background. Source now draws a fixed-width outline with one colored mark
+per agent through twelve sessions and a proportional strip beyond that. The
+status-item label starts live monitoring when it appears, covering app launches
+that restore no main window. Apple Silicon and Intel Release builds, 18 focused
+tests, 110 full-package passes with one environment-dependent skip, and the
+design check pass. This is a
+local refinement; the installed public build 12 retains the earlier counted
+battery, and the new mark has not been released or visually verified there.
+
 ## 2026-09-27 — public 0.2.7 build 12 installed
 
 The protected workflow released `v0.2.7-12` from source `0a94cecb` after

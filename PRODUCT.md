@@ -52,9 +52,9 @@ unavailable status; process presence controls whether a tile remains visible.
 The wall fills the screen, including when just one agent is present. Resident
 RAM changes relative tile area within bounds and is an estimate, not unique
 physical memory owned by the agent.
-While the app runs, a compact menu bar battery shows the live session count and
-one green, amber or red mark per agent when twelve or fewer are present. Larger
-counts use a proportional color strip; the exact per-agent states, workspace and
+While the app runs, a compact outline-only menu bar battery shows one green,
+amber or red mark per agent when twelve or fewer are present. Larger counts use
+a proportional color strip; the exact count, per-agent states, workspace and
 available latest-request labels remain in the menu and full-screen wall. The
 menu uses the wall's lifecycle evidence and removes exited processes rather
 than treating process presence as proof of active work.

@@ -13,11 +13,11 @@
   "agentMenuReview": {
     "date": "2026-09-27",
     "mode": "preserve",
-    "direction": "Owner-selected Signal menu bar direction, refined to a compact battery-shaped mark",
-    "contract": "Show the total live agent count and one colored mark per agent through twelve sessions; use a proportional strip above twelve. Open a compact grouped panel with exact state, workspace, available latest-request label, and the existing RAM and app controls.",
-    "evidence": "The earlier three-track development menu bar item rendered at native status-bar size with colored marks and count. The compact battery refinement shipped in signed, notarized v0.2.7-12. The installed app is running and matches the public DMG executable byte for byte.",
-    "checks": "XcodeBuildMCP Apple Silicon and Intel Swift package builds succeeded; 18 focused and 111 full package tests passed; design-workflow check passed. Public DMG checksum, Gatekeeper, strict installed signature and live appcast passed.",
-    "limits": "Native UI automation reports cgWindowNotFound for the running installed app, including after a reopen. The final battery appearance and click-through panel have not been visually inspected on the installed bundle."
+    "direction": "Owner-selected Signal menu bar direction, refined to an outline-only battery without visible count or filled background",
+    "contract": "Show one colored mark per live agent through twelve sessions inside a fixed-width battery outline; use a proportional strip above twelve. Keep the exact count, state, workspace, available latest-request label, and existing RAM and app controls in the compact panel. Start monitoring as soon as the status item appears, even if no app window opens.",
+    "evidence": "The installed v0.2.7-12 agent wall opened through native UI automation and showed live tiles and lifecycle states. The owner reported opening the menu panel and then requested removal of its visible count and background. Earlier three-track development menu visuals remain in artifacts/design. The 33-point outline-only refinement is a local source change.",
+    "checks": "XcodeBuildMCP Apple Silicon and Intel Release builds, 18 focused tests, 110 full-package passes with one environment-dependent skip, design-workflow check and git diff --check passed for the local refinement. The released v0.2.7-12 had passed public DMG checksum, Gatekeeper, strict installed signature and live appcast checks.",
+    "limits": "The installed v0.2.7-12 still has the older counted battery. Native UI automation could inspect the reopened installed app and agent wall, but the menu bar popover is not selectable by this provider. The new outline-only mark and windowless startup behavior need installed-bundle visual verification after a future release."
   },
   "appAccessReview": {
     "date": "2026-09-26",

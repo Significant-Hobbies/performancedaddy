@@ -22,9 +22,9 @@ and explicit clickable column headers with accessible direction announcements.
 ## Agent signal menu bar, owner-selected 2026-09-27
 
 The owner selected Signal from three menu bar directions, then requested a more
-compact battery-shaped mark. Its number is the total live agent sessions; green,
-amber and red marks represent individual sessions in state order up to twelve.
-At higher counts, one continuous proportional color strip preserves a compact
+compact, outline-only battery without a numeric count or filled background.
+Green, amber and red marks represent individual sessions in state order up to
+twelve. At higher counts, one proportional color strip preserves the same
 width. Clicking opens a restrained black panel grouped by state, with the exact
 status, workspace and bounded latest-request label for each agent. The existing
 RAM, pressure, socket and app controls remain in that panel. This is a compact

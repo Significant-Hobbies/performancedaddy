@@ -86,9 +86,9 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
   and last lifecycle event.
   Resident pages can be shared across families.
 
-  While PerformanceDaddy runs, its menu bar battery shows the total live agent
-  count and one colored mark per session through twelve agents. Above twelve,
-  the marks become a proportional color strip and the exact count remains.
+  While PerformanceDaddy runs, its compact outline-only menu bar battery shows
+  one colored mark per session through twelve agents. Above twelve, the marks
+  become a proportional color strip; the exact count remains in the panel.
   Clicking it shows every agent's exact state, workspace and available latest
   request, plus a shortcut to the full-screen wall. The same lifecycle evidence
   drives both views; a green mark is a recent work signal, not a process-presence

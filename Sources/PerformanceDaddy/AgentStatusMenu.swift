@@ -31,49 +31,45 @@ struct AgentStatusMenuBarLabel: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(summary.accessibilityLabel)
         .help(summary.accessibilityLabel)
+        .onAppear { model.start() }
     }
 }
 
 @MainActor
 private enum AgentStatusMark {
     static func image(for summary: AgentMenuSummary) -> NSImage {
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
-        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
-        let count = String(summary.total)
-        let countWidth = (count as NSString).size(withAttributes: attributes).width
-        let exactMarks = summary.total <= 12
-        let marksWidth = exactMarks ? CGFloat(max(0, summary.total * 6 - 2)) : 44
-        let bodyWidth = max(30, 8 + countWidth + (summary.total == 0 ? 0 : 8 + marksWidth) + 8)
-        let totalWidth = bodyWidth + 4
-        let image = NSImage(size: NSSize(width: totalWidth, height: 20), flipped: false) { rect in
-            NSColor(calibratedRed: 0.07, green: 0.13, blue: 0.11, alpha: 0.96).setFill()
-            let body = NSRect(x: 0, y: 1, width: bodyWidth, height: 18)
-            NSBezierPath(roundedRect: body, xRadius: 6, yRadius: 6).fill()
-            NSColor(calibratedRed: 0.25, green: 0.34, blue: 0.29, alpha: 1).setStroke()
-            NSBezierPath(roundedRect: body.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6).stroke()
-            NSColor(calibratedRed: 0.35, green: 0.45, blue: 0.39, alpha: 1).setFill()
-            NSBezierPath(roundedRect: NSRect(x: bodyWidth + 1, y: 7, width: 3, height: 6), xRadius: 1, yRadius: 1).fill()
+        let bodyWidth: CGFloat = 29
+        let marksWidth: CGFloat = 21
+        let image = NSImage(size: NSSize(width: 33, height: 18), flipped: false) { _ in
+            let body = NSRect(x: 0.5, y: 1.5, width: bodyWidth, height: 15)
+            NSColor(calibratedRed: 0.73, green: 0.78, blue: 0.75, alpha: 1).setStroke()
+            let outline = NSBezierPath(roundedRect: body, xRadius: 3, yRadius: 3)
+            outline.lineWidth = 1
+            outline.stroke()
+            NSColor(calibratedRed: 0.73, green: 0.78, blue: 0.75, alpha: 1).setFill()
+            NSBezierPath(roundedRect: NSRect(x: 30.5, y: 6, width: 2.5, height: 6), xRadius: 1, yRadius: 1).fill()
             let colors = [
                 NSColor(calibratedRed: 0.42, green: 0.79, blue: 0.62, alpha: 1),
                 NSColor(calibratedRed: 0.87, green: 0.67, blue: 0.28, alpha: 1),
                 NSColor(calibratedRed: 0.90, green: 0.46, blue: 0.40, alpha: 1)
             ]
-            (count as NSString).draw(at: NSPoint(x: 8, y: 3), withAttributes: attributes)
-            var x = 8 + countWidth + 8
+            var x: CGFloat = 4
             let counts = [summary.working, summary.attention, summary.failed]
-            if exactMarks {
+            if summary.total > 0 && summary.total <= 12 {
+                let gap: CGFloat = 1
+                let markWidth = (marksWidth - CGFloat(summary.total - 1) * gap) / CGFloat(summary.total)
                 for index in counts.indices {
                     colors[index].setFill()
                     for _ in 0..<counts[index] {
-                        NSBezierPath(roundedRect: NSRect(x: x, y: 5, width: 4, height: 10), xRadius: 2, yRadius: 2).fill()
-                        x += 6
+                        NSRect(x: x, y: 4.5, width: markWidth, height: 9).fill()
+                        x += markWidth + gap
                     }
                 }
-            } else {
+            } else if summary.total > 12 {
                 for index in counts.indices where counts[index] > 0 {
                     let width = marksWidth * CGFloat(counts[index]) / CGFloat(summary.total)
                     colors[index].setFill()
-                    NSRect(x: x, y: 5, width: width, height: 10).fill()
+                    NSRect(x: x, y: 4.5, width: width, height: 9).fill()
                     x += width
                 }
             }
