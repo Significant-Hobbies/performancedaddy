@@ -11,12 +11,12 @@ struct AgentMenuSummary {
     init(activities: [AgentWallActivity]) {
         total = activities.count
         working = activities.filter { $0 == .working }.count
-        attention = activities.filter { $0 == .waiting || $0 == .stopped || $0 == .unavailable }.count
+        attention = activities.filter { $0 == .waiting || $0 == .rateLimited || $0 == .stopped || $0 == .unavailable }.count
         failed = activities.filter { $0 == .failed }.count
     }
 
     var accessibilityLabel: String {
-        "Agent sessions: \(total) live, \(working) working, \(attention) need input, stopped, or status unavailable, \(failed) failed"
+        "Agent sessions: \(total) live, \(working) working, \(attention) need input, rate limited, stopped, or status unavailable, \(failed) failed"
     }
 }
 
@@ -128,7 +128,7 @@ struct AgentStatusMenu: View {
                         AgentStatusSection(title: "Working", color: PerformanceTheme.mintInk,
                                            tiles: tiles.filter { $0.activity == .working })
                         AgentStatusSection(title: "Attention", color: PerformanceTheme.amber,
-                                           tiles: tiles.filter { $0.activity == .waiting || $0.activity == .stopped || $0.activity == .unavailable })
+                                           tiles: tiles.filter { $0.activity == .waiting || $0.activity == .rateLimited || $0.activity == .stopped || $0.activity == .unavailable })
                         AgentStatusSection(title: "Failed", color: PerformanceTheme.coral,
                                            tiles: tiles.filter { $0.activity == .failed })
                     }

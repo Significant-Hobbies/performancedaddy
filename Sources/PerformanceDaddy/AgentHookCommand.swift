@@ -13,20 +13,15 @@ enum AgentHookCommand {
               }) else { return }
         let input = FileHandle.standardInput.readData(ofLength: 262_144)
         guard let object = try? JSONSerialization.jsonObject(with: input) as? [String: Any],
-              let rawEvent = object["hook_event_name"] as? String else { return }
-        let event: String
-        if rawEvent == "Notification" {
-            switch object["notification_type"] as? String {
-            case "permission_prompt", "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input":
-                event = "PermissionRequest"
-            case "idle_prompt", "agent_completed":
-                event = "Stop"
-            default: return
+              let event = statusEvent(provider: provider, payload: object) else { return }
+        let rawEvent = object["hook_event_name"] as? String
+        // Codex requires JSON from a successful Stop hook, even if this local
+        // process cannot be linked to a visible session.
+        defer {
+            if provider == "Codex", rawEvent == "Stop" {
+                FileHandle.standardOutput.write(Data("{}".utf8))
             }
-        } else {
-            event = rawEvent
         }
-        guard AgentWallSignal.allowedEvents.contains(event) else { return }
 
         var pid = getppid()
         var found: PDProcess?
@@ -68,6 +63,28 @@ enum AgentHookCommand {
             userInfo: payload,
             deliverImmediately: true
         )
+    }
+
+    static func statusEvent(provider: String, payload: [String: Any]) -> String? {
+        guard let rawEvent = payload["hook_event_name"] as? String else { return nil }
+        let event: String
+        if rawEvent == "StopFailure", provider == "Claude",
+           payload["error"] as? String == "rate_limit" {
+            event = "RateLimit"
+        } else if rawEvent == "Notification" {
+            switch payload["notification_type"] as? String {
+            case "permission_prompt", "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input":
+                event = "PermissionRequest"
+            case "idle_prompt", "agent_completed":
+                event = "Stop"
+            default: return nil
+            }
+        } else {
+            // RateLimit is an internal normalized status, not a provider event.
+            if rawEvent == "RateLimit" { return nil }
+            event = rawEvent
+        }
+        return AgentWallSignal.allowedEvents.contains(event) ? event : nil
     }
 
     static func shortTaskLabel(_ prompt: String) -> String? {

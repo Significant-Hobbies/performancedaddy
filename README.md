@@ -104,9 +104,14 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
   environment values or command arguments. Hook
   trust/reload is controlled by the provider. An uninstrumented terminal agent remains
   orange with “Status unavailable”; CPU use alone is not proof of agent work.
-  Working evidence expires after five minutes without another event. Codex
-  does not expose a general crash event through these hooks, so only Claude's
-  `StopFailure` currently turns a tile red. Hook events are best-effort and
+  Working evidence expires after five minutes without another event. The default
+  hooks also observe compaction, Claude tool failures, and Claude MCP input
+  requests. Claude's `StopFailure` turns a tile red for API failures, except its
+  documented `rate_limit` error, which shows amber as “Rate limited.” Devin
+  documents no QPS wait hook, so a QPS pause cannot be identified immediately;
+  it becomes amber as “Status unavailable” if no work event arrives for five
+  minutes. Codex does not expose a general crash event through these hooks.
+  Hook events are best-effort and
   may be missed if the app is closed or the provider cannot link the hook
   process to its local agent process. Status is held in memory while the app
   runs; older sessions may need to reload hooks or restart before they report

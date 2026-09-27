@@ -118,7 +118,7 @@ final class LiveViewModel: ObservableObject {
                     var updated = signal
                     if let previous = self.agentSignals[signal.process] {
                         guard signal.observedAt >= previous.observedAt else { return }
-                        if signal.event == "SessionEnd", previous.event == "StopFailure",
+                        if signal.event == "SessionEnd", ["StopFailure", "RateLimit"].contains(previous.event),
                            signal.observedAt.timeIntervalSince(previous.observedAt) < 30 { return }
                         updated.workspace = signal.workspace ?? previous.workspace
                         updated.taskLabel = signal.taskLabel ?? previous.taskLabel

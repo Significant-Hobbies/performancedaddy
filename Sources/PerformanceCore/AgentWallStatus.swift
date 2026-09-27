@@ -35,13 +35,16 @@ public struct AgentWallSignal: Sendable, Equatable {
 
     public static let allowedEvents: Set<String> = [
         "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest",
-        "Stop", "StopFailure", "Interrupt", "SessionEnd"
+        "PostToolUseFailure", "PreCompact", "PostCompact", "PostCompaction",
+        "Elicitation", "ElicitationResult", "Stop", "StopFailure", "RateLimit",
+        "Interrupt", "SessionEnd"
     ]
 }
 
 public enum AgentWallActivity: String, Sendable {
     case working = "Working"
     case waiting = "Needs input"
+    case rateLimited = "Rate limited"
     case stopped = "Stopped"
     case failed = "Failed"
     case unavailable = "Status unavailable"
@@ -49,8 +52,11 @@ public enum AgentWallActivity: String, Sendable {
     public static func resolve(event: String?, age: TimeInterval) -> Self {
         guard let event, age >= 0 else { return .unavailable }
         switch event {
-        case "UserPromptSubmit", "PreToolUse", "PostToolUse": return age <= 300 ? .working : .unavailable
-        case "PermissionRequest": return .waiting
+        case "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+             "PreCompact", "PostCompact", "PostCompaction", "ElicitationResult":
+            return age <= 300 ? .working : .unavailable
+        case "PermissionRequest", "Elicitation": return .waiting
+        case "RateLimit": return .rateLimited
         case "StopFailure": return .failed
         case "Stop", "Interrupt", "SessionEnd": return .stopped
         case "SessionStart": return .unavailable

@@ -27,7 +27,7 @@ struct AgentWallView: View {
     private func tileView(_ tile: LiveViewModel.AgentWallTile) -> some View {
         let color = switch tile.activity {
         case .working: PerformanceTheme.mintInk
-        case .waiting, .stopped, .unavailable: PerformanceTheme.amber
+        case .waiting, .rateLimited, .stopped, .unavailable: PerformanceTheme.amber
         case .failed: PerformanceTheme.coral
         }
         return GeometryReader { geometry in
@@ -124,9 +124,15 @@ struct AgentWallView: View {
         case "UserPromptSubmit": "REQUEST"
         case "PreToolUse": "TOOL START"
         case "PostToolUse": "TOOL END"
+        case "PostToolUseFailure": "TOOL FAILED"
+        case "PreCompact": "COMPACT START"
+        case "PostCompact", "PostCompaction": "COMPACT END"
         case "PermissionRequest": "INPUT"
+        case "Elicitation": "INPUT"
+        case "ElicitationResult": "INPUT RECEIVED"
         case "Stop": "TURN END"
         case "StopFailure": "FAILURE"
+        case "RateLimit": "RATE LIMIT"
         case "Interrupt": "INTERRUPT"
         case "SessionStart": "SESSION START"
         case "SessionEnd": "SESSION END"
@@ -260,11 +266,11 @@ struct AgentHookSetupView: View {
         let events: [String]
         switch provider {
         case "Codex":
-            events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"]
+            events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "PreCompact", "PostCompact", "Stop", "Interrupt", "SessionEnd"]
         case "Devin":
-            events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "SessionEnd"]
+            events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "PostCompaction", "Stop", "SessionEnd"]
         default:
-            events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Notification", "Stop", "StopFailure", "SessionEnd"]
+            events = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Elicitation", "ElicitationResult", "Notification", "PreCompact", "PostCompact", "Stop", "StopFailure", "SessionEnd"]
         }
         let hooks = Dictionary(uniqueKeysWithValues: events.map { event in
             (event, [["hooks": [["type": "command", "command": "\(quoted) --agent-hook \(provider)"]]]])
