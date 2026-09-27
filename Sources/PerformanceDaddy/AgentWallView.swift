@@ -252,7 +252,7 @@ struct AgentHookSetupView: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(configuration, forType: .string)
             }
-            Text("Keep existing settings. New events appear after the agent reloads its hooks and starts work. Older sessions may need to restart before they send events. The wall shows process families; multiple conversations in one host can share a tile. Uninstrumented terminal agents stay orange as status unavailable. Shared Codex host activity appears in its own tile because its hooks do not identify a terminal client.")
+            Text("Keep existing settings. New events appear after the agent reloads its hooks and starts work. Older sessions may need to restart before they send events. The wall shows terminal agent sessions and locally instrumented background agents. Uninstrumented terminal agents stay orange as status unavailable. Shared Codex app servers stay in the process list because their hooks do not identify a terminal client.")
                 .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
         }
         .padding(24)

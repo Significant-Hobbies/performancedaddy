@@ -122,18 +122,7 @@ final class LiveViewModel: ObservableObject {
                 forName: AgentWallSignal.notification, object: nil, queue: .main
             ) { [weak self] notification in
                 guard let signal = AgentWallSignal(userInfo: notification.userInfo) else { return }
-                Task { @MainActor in
-                    guard let self else { return }
-                    var updated = signal
-                    if let previous = self.agentSignals[signal.process] {
-                        guard signal.observedAt >= previous.observedAt else { return }
-                        if signal.event == "SessionEnd", ["StopFailure", "RateLimit"].contains(previous.event),
-                           signal.observedAt.timeIntervalSince(previous.observedAt) < 30 { return }
-                        updated = signal.carryingForward(from: previous)
-                    }
-                    self.agentSignals[signal.process] = updated
-                    self.rowCache.removeValue(forKey: .agents)
-                }
+                Task { @MainActor in self?.recordAgentSignal(signal) }
             }
         }
         if wakeObserver == nil {
@@ -158,6 +147,18 @@ final class LiveViewModel: ObservableObject {
                 do { try await Task.sleep(for: .seconds(interval)) } catch { return }
             }
         }
+    }
+
+    func recordAgentSignal(_ signal: AgentWallSignal) {
+        var updated = signal
+        if let previous = agentSignals[signal.process] {
+            guard signal.observedAt >= previous.observedAt else { return }
+            if signal.event == "SessionEnd", ["StopFailure", "RateLimit"].contains(previous.event),
+               signal.observedAt.timeIntervalSince(previous.observedAt) < 30 { return }
+            updated = signal.carryingForward(from: previous)
+        }
+        agentSignals[signal.process] = updated
+        rowCache.removeValue(forKey: .agents)
     }
 
     func refresh() async {
@@ -305,6 +306,9 @@ final class LiveViewModel: ObservableObject {
     var portCount: Int { snapshot?.processes.reduce(0) { $0 + $1.ports.count } ?? 0 }
     var agentCount: Int { agentRoots.filter(isObservedAgentSession).count }
     private func isObservedAgentSession(_ root: LiveProcess) -> Bool {
+        // A shared Codex app server can report activity for several sessions.
+        // It is not an additional agent session or battery mark.
+        if root.agent == "Codex" && !root.hasControllingTerminal { return false }
         return root.hasControllingTerminal || agentSignals[root.id]?.provider == root.agent ||
             Self.sessionFamily(of: root, index: index).contains { member in
                 agentSignals[member.id]?.provider == root.agent
@@ -321,10 +325,7 @@ final class LiveViewModel: ObservableObject {
         let lastEvent: String?
         let lastEventAt: Date?
         var id: ProcessIdentity { process.id }
-        var displayName: String {
-            process.agent == "Codex" && !process.hasControllingTerminal ? "Codex host" :
-                (process.agent ?? process.name)
-        }
+        var displayName: String { process.agent ?? process.name }
     }
 
     static func directAgentSignal(for root: LiveProcess, index: WorkloadIndex,

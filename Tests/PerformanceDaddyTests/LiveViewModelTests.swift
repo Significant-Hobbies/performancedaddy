@@ -176,6 +176,32 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(model.agentWallTiles.map(\.id.pid), [13])
     }
 
+    func testInstrumentedCodexHostDoesNotCreateAFifthSession() throws {
+        let model = LiveViewModel()
+        func codex(_ pid: Int32, parent: Int32, terminal: Bool) -> LiveProcess {
+            LiveProcess(id: .init(pid: pid, started: 10), parent: parent, uid: getuid(),
+                        name: "codex", executable: "/opt/bin/codex", directory: "/tmp",
+                        cpu: 0, memory: 1_024, hasControllingTerminal: terminal)
+        }
+        let host = codex(40, parent: 1, terminal: false)
+        let terminals = [codex(41, parent: 40, terminal: true),
+                         codex(42, parent: 1, terminal: true),
+                         codex(43, parent: 1, terminal: true)]
+        let devin = LiveProcess(id: .init(pid: 44, started: 10), parent: 1, uid: getuid(),
+                                name: "devin", executable: "/opt/bin/devin", directory: "/tmp",
+                                cpu: 0, memory: 1_024, hasControllingTerminal: true)
+        model.snapshot = snapshot([host] + terminals + [devin])
+        let signal = try XCTUnwrap(AgentWallSignal(userInfo: [
+            "pid": NSNumber(value: host.id.pid), "started": NSNumber(value: host.id.started),
+            "provider": "Codex", "event": "PostToolUse",
+            "timestamp": NSNumber(value: Date().timeIntervalSince1970)
+        ]))
+        model.recordAgentSignal(signal)
+        XCTAssertEqual(model.agentCount, 4)
+        XCTAssertEqual(Set(model.agentWallTiles.map(\.id.pid)), [41, 42, 43, 44])
+        XCTAssertEqual(model.agentWallTiles.first { $0.id.pid == 41 }?.activity, .unavailable)
+    }
+
     func testTerminalCodexBelowSharedHostRemainsSeparate() {
         let model = LiveViewModel()
         let host = LiveProcess(id: .init(pid: 40, started: 10), parent: 1, uid: getuid(),
