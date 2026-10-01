@@ -72,7 +72,10 @@ final class LiveViewModel: ObservableObject {
     @Published private(set) var agentSignals: [ProcessIdentity: AgentWallSignal] = [:]
     @Published private(set) var sharedCodexSignals: [String: AgentWallSignal] = [:]
     @Published private(set) var codexSessionLinks: [ProcessIdentity: String] = [:]
-    @Published private(set) var absentAgentProcesses: Set<ProcessIdentity> = []
+    @Published private(set) var absentAgentProcesses: Set<ProcessIdentity> = [] {
+        didSet { rowCache.removeValue(forKey: .agents) }
+    }
+    private var lastAgentActivities: [ProcessIdentity: AgentWallActivity] = [:]
     private let sampler = WorkloadSampler()
     private var task: Task<Void, Never>?
     private var agentPresenceTask: Task<Void, Never>?
@@ -165,8 +168,6 @@ final class LiveViewModel: ObservableObject {
         var updated = signal
         if let previous = agentSignals[signal.process] {
             guard signal.observedAt >= previous.observedAt else { return }
-            if signal.event == "SessionEnd", ["StopFailure", "RateLimit"].contains(previous.event),
-               signal.observedAt.timeIntervalSince(previous.observedAt) < 30 { return }
             updated = signal.carryingForward(from: previous)
         }
         agentSignals[signal.process] = updated
@@ -343,8 +344,20 @@ final class LiveViewModel: ObservableObject {
 
     var selected: LiveProcess? { snapshot?.processes.first { selection.contains($0.id) } }
     var portCount: Int { snapshot?.processes.reduce(0) { $0 + $1.ports.count } ?? 0 }
-    var agentCount: Int { agentRoots.filter(isObservedAgentSession).count }
+    var agentCount: Int { agentRoots.filter { $0.isUserProcess && isObservedAgentSession($0) }.count }
     private func isObservedAgentSession(_ root: LiveProcess) -> Bool {
+        guard !absentAgentProcesses.contains(root.id) else { return false }
+        // A different provider in the ancestor chain owns this nested agent
+        // workload. A PTY (including its own foreground group) does not make
+        // an embedded tool an additional top-level user session. Idle roots
+        // remain sessions; same-provider shared Codex clients stay separate.
+        guard !index.ancestors(of: root).contains(where: {
+            $0.agent != nil && $0.agent != root.agent
+        }) else { return false }
+        let direct = Self.directAgentSignal(for: root, index: index, signals: agentSignals)
+        let signal = direct ?? codexSessionLinks[root.id].flatMap { sharedCodexSignals[$0] }
+        // SessionEnd closes a session; Stop merely completes a turn in an open one.
+        guard signal?.event != "SessionEnd" else { return false }
         // A shared Codex app server can report activity for several sessions.
         // It is not an additional agent session or battery mark.
         if root.agent == "Codex" && !root.hasControllingTerminal { return false }
@@ -442,6 +455,13 @@ final class LiveViewModel: ObservableObject {
             Set(identities.filter { ProcessPresence.inspect($0) == .gone })
         }.value
         if gone != absentAgentProcesses { absentAgentProcesses = gone }
+        // Hook expiry must also redraw while process sampling is paused.
+        let activities = Dictionary(agentWallTiles.map { ($0.id, $0.activity) }, uniquingKeysWith: { first, _ in first })
+        if activities != lastAgentActivities {
+            lastAgentActivities = activities
+            rowCache.removeValue(forKey: .agents)
+            objectWillChange.send()
+        }
     }
     var observerSummary: String {
         guard let snapshot, let own = snapshot.processes.first(where: { $0.id.pid == ProcessInfo.processInfo.processIdentifier }) else { return "Monitor measuring" }

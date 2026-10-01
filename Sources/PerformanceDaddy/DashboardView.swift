@@ -22,6 +22,8 @@ struct DashboardView: View {
                     ConfigurationView()
                 } else if destination == "App access" {
                     AppAccessAuditView(live: live)
+                } else if destination == "Fans & heat" {
+                    FanInvestigationView(model: model)
                 } else {
                     VStack(spacing: 0) {
                         HStack {
@@ -124,6 +126,7 @@ struct DashboardView: View {
                     navigationItem(page.rawValue, icon: page.icon)
                 }
                 navigationHeading("INVESTIGATE").padding(.top, 9)
+                navigationItem("Fans & heat", icon: "fan")
                 navigationItem("App access", icon: "lock.shield")
                 navigationItem("Configuration", icon: "doc.text.magnifyingglass")
                 navigationItem("Diagnose", icon: "waveform.path.ecg")

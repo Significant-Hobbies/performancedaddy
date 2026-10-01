@@ -252,7 +252,7 @@ struct LiveWorkloadsView: View {
                 ContentUnavailableView {
                     Label(model.search.isEmpty ? "No matching processes observed" : "No matches", systemImage: page.icon)
                 } description: {
-                    Text(page == .agents ? "Known local agent executables appear here. Wrapped launches and cloud sessions may not be visible." : model.includeSystem ? "Try another name, app, role or port. Inspection can be limited by macOS permissions." : "Try another name, app, role or port, or include system processes.")
+                    Text(page == .agents ? "Known local agent sessions appear here, including idle ones. Nested agent tools stay in the owning workload and process list." : model.includeSystem ? "Try another name, app, role or port. Inspection can be limited by macOS permissions." : "Try another name, app, role or port, or include system processes.")
                 } actions: {
                     if !model.search.isEmpty { Button("Clear search") { model.search = "" } }
                 }

@@ -149,6 +149,106 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(model.rows(for: .agents).map(\.id.pid), [12])
     }
 
+    func testNestedCodexUnderDevinIsAWorkloadNotAnAdditionalSessionEvenWhenIdle() throws {
+        let model = LiveViewModel()
+        let host = LiveProcess(id: .init(pid: 40, started: 10), parent: 1, uid: getuid(),
+                               name: "Devin", executable: "/Applications/Devin.app/Contents/MacOS/Devin",
+                               directory: "", cpu: 0, memory: 1_000)
+        let shell = process(41, parent: 40, name: "zsh", cpu: 0)
+        let embedded = process(42, parent: 41, name: "codex", cpu: 0)
+        let idle = (50..<56).map { process(Int32($0), name: "codex", cpu: 0) }
+        model.snapshot = snapshot([host, shell, embedded] + idle)
+        XCTAssertEqual(model.agentCount, 6)
+        XCTAssertEqual(model.agentWallTiles.count, 6)
+        XCTAssertEqual(model.rows(for: .agents).count, 6)
+        XCTAssertTrue(model.agentWallTiles.allSatisfy { $0.activity == .unavailable })
+        XCTAssertTrue(model.rows(for: .workloads).contains { $0.id == embedded.id })
+        // Activity on the nested worker does not promote it into a user session.
+        model.recordAgentSignal(try XCTUnwrap(AgentWallSignal(userInfo: [
+            "pid": NSNumber(value: embedded.id.pid), "started": NSNumber(value: embedded.id.started),
+            "provider": "Codex", "event": "PreToolUse",
+            "timestamp": NSNumber(value: Date().timeIntervalSince1970 - 1)
+        ])))
+        XCTAssertEqual(model.agentCount, 6)
+        XCTAssertEqual(model.agentWallTiles.count, 6)
+    }
+
+    func testDifferentProviderNestedUnderInteractiveAgentIsNotAnotherSession() {
+        let model = LiveViewModel()
+        let parent = process(40, name: "codex", cpu: 0)
+        let nested = process(41, parent: 40, name: "claude", cpu: 0)
+        let sibling = process(42, name: "claude", cpu: 0)
+        model.snapshot = snapshot([parent, nested, sibling])
+        XCTAssertEqual(Set(model.agentWallTiles.map(\.id.pid)), [40, 42])
+        XCTAssertEqual(Set(model.rows(for: .agents).map(\.id.pid)), [40, 42])
+        XCTAssertEqual(model.agentCount, 2)
+    }
+
+    func testConfirmedGoneAgentDisappearsFromCountCachedTableAndWall() async {
+        let model = LiveViewModel()
+        let gone = process(Int32.max, name: "codex", cpu: 0)
+        model.snapshot = snapshot([gone])
+        XCTAssertEqual(model.rows(for: .agents).count, 1) // populate table cache
+        XCTAssertEqual(model.agentCount, 1)
+        await model.checkAgentPresence()
+        XCTAssertEqual(model.agentCount, 0)
+        XCTAssertTrue(model.rows(for: .agents).isEmpty)
+        XCTAssertTrue(model.agentWallTiles.isEmpty)
+        XCTAssertEqual(model.rows(for: .workloads).count, 1) // snapshot unchanged
+    }
+
+    func testSessionEndRemovesSessionButTurnStopRetainsIdleSession() throws {
+        let model = LiveViewModel()
+        let root = process(10, name: "codex", cpu: 0)
+        model.snapshot = snapshot([root])
+        let base = Date().timeIntervalSince1970 - 1
+        func send(_ event: String, offset: Double) throws {
+            model.recordAgentSignal(try XCTUnwrap(AgentWallSignal(userInfo: [
+                "pid": NSNumber(value: root.id.pid), "started": NSNumber(value: root.id.started),
+                "provider": "Codex", "event": event, "timestamp": NSNumber(value: base + offset)
+            ])))
+        }
+        try send("UserPromptSubmit", offset: 0)
+        XCTAssertEqual(AgentMenuSummary(activities: model.agentWallTiles.map(\.activity)).working, 1)
+        try send("Stop", offset: 0.1)
+        XCTAssertEqual(model.agentCount, 1)
+        XCTAssertEqual(model.agentWallTiles.first?.activity, .stopped)
+        XCTAssertEqual(AgentMenuSummary(activities: model.agentWallTiles.map(\.activity)).working, 0)
+        _ = model.rows(for: .agents)
+        try send("SessionEnd", offset: 0.2)
+        XCTAssertEqual(model.agentCount, 0)
+        XCTAssertTrue(model.rows(for: .agents).isEmpty)
+        XCTAssertTrue(model.agentWallTiles.isEmpty)
+        try send("SessionStart", offset: 0.3)
+        XCTAssertEqual(model.agentCount, 1)
+        XCTAssertEqual(model.agentWallTiles.first?.activity, .unavailable)
+    }
+
+    func testEndedFailedSessionIsNotCountedAsLive() throws {
+        let model = LiveViewModel()
+        let root = process(10, name: "claude", cpu: 0)
+        model.snapshot = snapshot([root])
+        for (offset, event) in ["StopFailure", "SessionEnd"].enumerated() {
+            model.recordAgentSignal(try XCTUnwrap(AgentWallSignal(userInfo: [
+                "pid": NSNumber(value: root.id.pid), "started": NSNumber(value: root.id.started),
+                "provider": "Claude", "event": event,
+                "timestamp": NSNumber(value: Date().timeIntervalSince1970 - 1 + Double(offset) * 0.1)
+            ])))
+        }
+        XCTAssertEqual(model.agentCount, 0)
+        XCTAssertTrue(model.agentWallTiles.isEmpty)
+    }
+
+    func testCountDoesNotIncludeAnotherUsersAgent() {
+        let other = LiveProcess(id: .init(pid: 10, started: 10), parent: 1, uid: getuid() + 1,
+                                name: "codex", executable: "/bin/codex", directory: "",
+                                cpu: 1, memory: 0, hasControllingTerminal: true)
+        let model = LiveViewModel()
+        model.snapshot = snapshot([other])
+        XCTAssertEqual(model.agentCount, 0)
+        XCTAssertTrue(model.agentWallTiles.isEmpty)
+    }
+
     func testVersionedClaudeProcessAppearsInAgentSessions() {
         let executable = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".local/share/claude/versions/2.1.280").path

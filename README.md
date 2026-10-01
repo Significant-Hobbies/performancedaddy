@@ -238,3 +238,23 @@ system thermal state plus public power constraints. PerformanceDaddy does not
 install a helper or change fan settings.
 CPU allowances may also be unavailable on a particular Mac; unavailable never
 means zero or unrestricted.
+
+## Investigate fan noise
+
+Open **Fans & heat** and record while the fan is loud. The explanation-first
+report shows CPU averages and trends, recorded process contributors, thermal
+state, available CPU allowance constraints, coverage and confidence. A repeat
+check compares recorded resources with the open capture and preserves the normal
+15-second or 2-minute recording length. It does not automatically stop workloads.
+Fan checks use the existing local recent-run history; **Diagnose → Recent runs**
+can reopen earlier captures for the fan interpretation.
+
+Fan noise is a user observation. This implementation does not read actual fan
+RPM, raw temperatures or GPU activity. Nominal thermal state does not prove a
+quiet fan, and a resource comparison cannot establish fan-noise improvement.
+Sustained CPU work is an investigation signal, not proof of whole-machine
+saturation or the physical cause of heat. Unavailable domains remain explicit.
+
+Fan investigations now record bounded app/agent workload groups from native process identity and ancestry, including idle parents. The explanation distinguishes measured workload CPU, coincident thermal pressure, paging activity, and unresolved fan/GPU links. Follow-ups compare the same recorded workload alongside system CPU and thermal state. Legacy recordings remain readable with ownership marked unavailable. No arguments, executable paths or working directories are persisted by this attribution feature.
+
+Agent session counts include idle top-level sessions. Nested agent tools under another provider are part of the owning workload, not additional user sessions, even when they have a terminal. They remain inspectable in Processes. Confirmed exits and SessionEnd remove a live session; Stop completes a turn and leaves an idle session. Recent working activity is reported separately and expires even while process sampling is paused.

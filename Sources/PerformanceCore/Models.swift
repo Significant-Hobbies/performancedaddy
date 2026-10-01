@@ -41,6 +41,7 @@ public struct SystemSample: Codable, Equatable, Sendable {
     public let samplerCPUCores: Double?
     public let memory: MemoryEvidence?
     public let power: PowerEvidence?
+    public let workloads: [RecordedWorkload]?
 
     public init(
         timestamp: Date,
@@ -52,7 +53,8 @@ public struct SystemSample: Codable, Equatable, Sendable {
         processes: [ProcessObservation],
         samplerCPUCores: Double? = nil,
         memory: MemoryEvidence? = nil,
-        power: PowerEvidence? = nil
+        power: PowerEvidence? = nil,
+        workloads: [RecordedWorkload]? = nil
     ) {
         self.timestamp = timestamp
         self.usedCPUCores = usedCPUCores
@@ -64,6 +66,7 @@ public struct SystemSample: Codable, Equatable, Sendable {
         self.samplerCPUCores = samplerCPUCores
         self.memory = memory
         self.power = power
+        self.workloads = workloads
     }
 }
 
@@ -155,6 +158,7 @@ public struct DiagnosticFinding: Equatable, Sendable {
 }
 
 public struct DiagnosticReport: Equatable, Sendable {
+    public var fanInvestigation: FanInvestigation { FanInvestigation.analyze(capture) }
     public let capture: DiagnosticCapture
     public let finding: DiagnosticFinding
     public let cpuSeries: [Double]

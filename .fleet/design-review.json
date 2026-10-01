@@ -106,7 +106,10 @@
     "date": "2026-09-19",
     "mode": "preserve",
     "direction": "Owner-approved exact StorageDaddy Daddy-series styling",
-    "reviewers": ["thermal_design_review", "thermal_native_review"],
+    "reviewers": [
+      "thermal_design_review",
+      "thermal_native_review"
+    ],
     "critique": "34/40 provisional source assessment; native root inspection supplements source review",
     "technicalReview": "Pause continuity finding fixed and re-reviewed. No remaining confirmed P0/P1 in this increment.",
     "checks": "33 tests passed; Swift package build passed",
@@ -145,7 +148,10 @@
     "target": "LiveWorkloadsView.swift daily table refinement",
     "scope": "Owner-requested clickable headers and StorageDaddy pattern reuse; no broad visual-system replacement.",
     "reuse": "StorageDaddy native icon caching and readable location labels; source product unchanged.",
-    "assessments": ["/root/polish_design_review", "/root/polish_native_audit"],
+    "assessments": [
+      "/root/polish_design_review",
+      "/root/polish_native_audit"
+    ],
     "critiqueScore": "34/40",
     "auditStatus": "provisional source-only; minimum-window risks identified, minimum raised to 980x800",
     "evidence": "Native conversation screenshots: Processes and Ports at 1180x740; RAM header ascending/descending; final PID labels and Memory layout after relaunch.",
@@ -271,5 +277,108 @@
     "evidence": "Native development app showed the saved-baseline control on an existing report and the exact recent-run deletion confirmation; deletion was cancelled. Persistence and independent deletion passed focused tests.",
     "checks": "XcodeBuildMCP Release build and 106 package tests, two Sparkle tests, six Worker tests, design-workflow check passed",
     "limits": "No personal capture was saved or deleted during UI review. This compares bounded CPU, memory and thermal evidence, not app versions or workflow timing. No installed release was changed."
+  },
+  "fanInvestigationReview": {
+    "date": "2026-10-01",
+    "mode": "overhaul",
+    "surfaceMode": "operate",
+    "approval": "delegated",
+    "target": "Fans & heat timed fan-incident investigation",
+    "purpose": "Help Mac users investigate user-reported fan noise through bounded measured CPU, thermal and power evidence, with explicit fan/GPU coverage gaps.",
+    "purposeSource": "PRODUCT.md",
+    "canonicalPurpose": "PerformanceDaddy helps developers inspect local processes, ports and measured slowdown signals before taking action.",
+    "canonicalSource": "../site-health/apps/backend/config/projects.json presentation.directory purpose contract for performancedaddy",
+    "purposeAlignment": "repository-override",
+    "driftNote": "Repository PRODUCT.md covers wider Mac performance investigation. Canonical contract remains narrower and its release proof is historical; no landing page or production configuration is changed in this task.",
+    "audience": "Mac users hearing fan noise, especially developers with active builds and background workloads.",
+    "job": "Explain possible measured heat contributors without substituting CPU or thermal state for a fan-speed reading.",
+    "system": "Existing black canvas, mint actions, pale-mint secondary text, amber confidence, system typography and 7pt controls. Layout and information hierarchy await owner selection.",
+    "directions": [
+      {
+        "id": "a",
+        "preview": "artifacts/design/fan-direction-archive/fan-direction-a.png",
+        "thesis": "Explanation first, with NOW / WHY / NEXT narrative bands.",
+        "layout": "Large verdict and a single vertically sequenced investigation.",
+        "typography": "34pt leading verdict, 20pt band titles, quiet evidence rows.",
+        "interaction": "Progressive evidence disclosure and one equal-length recapture action.",
+        "signature": "User-reported fan incident becomes a measured explanation and discriminating next check.",
+        "risk": "Experts may need to expand the detail."
+      },
+      {
+        "id": "b",
+        "preview": "artifacts/design/fan-direction-archive/fan-direction-b.png",
+        "thesis": "Temporal change leads the investigation.",
+        "layout": "Summary strip, resource readings and a wide CPU timeline with contributor detail.",
+        "typography": "Short large title, compact verdict, numeric resource readings.",
+        "interaction": "Inspect the measured time window and repeat a comparable capture.",
+        "signature": "Activity settling is visible without implying measured fan settling.",
+        "risk": "A chart may imply causal timing; fan/GPU non-measurement stays explicit."
+      },
+      {
+        "id": "c",
+        "preview": "artifacts/design/fan-direction-archive/fan-direction-c.png",
+        "thesis": "Measured coverage and ranked explanations share the screen.",
+        "layout": "Dense evidence table and process contributors beside a numbered investigation rail.",
+        "typography": "Resource labels and aligned numerical rows, smaller explanatory paragraphs.",
+        "interaction": "Inspect resource coverage and process evidence before recapture.",
+        "signature": "Unknown sensor coverage is as visible as available measurements.",
+        "risk": "More demanding for casual users; plain-language investigation stays adjacent."
+      }
+    ],
+    "selected": "a",
+    "antiPattern": "No decorative fan animation, implied RPM, health score or automatic workload termination.",
+    "evidence": "Isolated development bundle verified through native AX and screenshots: setup, real 15-second capture, five contributors, cancellation restoring report, equal-length follow-up resource comparison, unavailable power disclosure and observer CPU evidence. Captures reopened after app restart from the existing recent-run menu.",
+    "checks": "XcodeBuildMCP build passed; 10 focused core/native-render tests passed; all 126 package tests passed; final two native-render tests passed after adding observer coverage. git diff --check and design-workflow check passed.",
+    "implementation": "Explanation-first native Fans & heat sidebar surface implemented, sharing DiagnosisViewModel recording and history. Equal-length normal recaptures compare resources with the open capture; no saved slowdown baseline is silently substituted.",
+    "limits": "Fan RPM, raw temperature and GPU activity remain unmeasured. CPU/thermal/power evidence cannot prove the physical fan cause or fan-noise improvement. Native AX was inspected, but full VoiceOver and physical cooling/fan validation were not performed. Installed release unchanged.",
+    "ownerDecision": "delegated",
+    "ownerFeedback": "Anything is fine.",
+    "review": {
+      "method": "Manual bounded source, native AX and screenshot review; Impeccable skill not installed.",
+      "critique": {
+        "score": 35,
+        "maximum": 40,
+        "basis": "Explanation hierarchy, clear signal-versus-cause wording, progressive evidence, consistent native tokens. Dense contributor section requires scrolling."
+      },
+      "audit": {
+        "score": 17,
+        "maximum": 20,
+        "basis": "Headers, controls, native accessibility values, cancellation, unavailable domains, supported-size rendering and resource comparison inspected. Full VoiceOver and physical fan validation unqualified."
+      },
+      "unresolved": {
+        "p0": 0,
+        "p1": 0
+      },
+      "comprehension": "not-applicable-operate-surface",
+      "screenshots": [
+        "artifacts/design/fan-native-final.png",
+        "artifacts/design/fan-native-comparison.png",
+        "artifacts/design/fan-native-sizes/fan-report-content-760.png",
+        "artifacts/design/fan-native-sizes/fan-report-content-1220.png"
+      ]
+    },
+    "cleanup": "Direction previews archived outside the product; temporary localhost comparison server stopped. No comparison navigation or runtime dependency added."
+  },
+  "workloadAttributionReview": {
+    "date": "2026-10-01",
+    "mode": "preserve-selected-fan-direction-a",
+    "scope": "App and agent attribution, CPU share, explicit measured and unresolved links, same-workload follow-up comparison",
+    "evidence": "artifacts/design/attribution; native live recording verified workload rows, 14/15 CPU coverage, nominal thermal state, 69 percent accounted CPU and explicit fan/GPU gaps. Final native follow-up: system CPU 3.16 to 2.07 cores while OrbStack 0.30 to 0.33; correctly refused to credit that workload for the reduction. Screenshot: artifacts/design/attribution/live-follow-up.png",
+    "checks": "XcodeBuildMCP CLI build passed; full suite 136 passed; focused attribution/fan/render suite 20 passed",
+    "limitations": "Fan RPM and GPU remain unavailable; physical fan correlation and full VoiceOver not verified. Peak observer CPU in live quick recording was 0.24 cores; no release overhead qualification claim."
+  },
+  "agentSessionCountReview": {
+    "date": "2026-10-01",
+    "mode": "preserve",
+    "scope": "Correct top-level session eligibility and clarify menu status labels; keep idle and unverified root sessions visible",
+    "cause": "Codex PTY below Devin desktop process was counted as a separate top-level session. Native ancestry confirmed codex -> zsh -> Devin Helper -> Devin. Terminal attachment does not establish independent session ownership.",
+    "evidence": [
+      "artifacts/design/agent-count/before.png",
+      "artifacts/design/agent-count/after-table-six.png",
+      "artifacts/design/agent-count/after-wall-six.png"
+    ],
+    "verification": "Native table and wall each show six including unverified roots. Regression fixture tests six idle roots plus a nested Codex, nested hooks, independent siblings, confirmed exits, SessionEnd and turn Stop. Menu uses the same eligible wall population.",
+    "checks": "XcodeBuildMCP CLI: 46 focused tests and 144 full-suite tests passed. git diff --check passed.",
+    "limitations": "No new visual system or layout. Menu native popup and full VoiceOver not verified; menu summary tested. Local development preview only, no public release."
   }
 }

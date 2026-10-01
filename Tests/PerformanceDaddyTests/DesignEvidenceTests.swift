@@ -6,6 +6,39 @@ import XCTest
 
 @MainActor
 final class DesignEvidenceTests: XCTestCase {
+    func testFanInvestigationRendersSetupAndUnavailableEvidenceAtNativeSizes() throws {
+        for width: CGFloat in [760, 1_220] {
+            for hasReport in [false, true] {
+                let model = DiagnosisViewModel()
+                if hasReport {
+                    let start = Date(timeIntervalSince1970: 0)
+                    let samples = (0..<12).map { index in
+                        SystemSample(timestamp: start.addingTimeInterval(Double(index)), usedCPUCores: 4,
+                                     memoryHeadroomRatio: nil, swapUsedBytes: nil, diskFreeBytes: nil,
+                                     thermal: .fair, processes: [],
+                                     workloads: [.init(id: "browser", name: "Browser & helpers", association: "App bundle path association", cpuCores: 3, processCount: 8)])
+                    }
+                    model.review(DiagnosticEngine().analyze(.init(startedAt: start, endedAt: start.addingTimeInterval(12), samples: samples, isFixture: true)))
+                }
+                let view = NSHostingView(rootView: FanInvestigationView(model: model)
+                    .frame(width: width, height: 800))
+                view.frame = NSRect(x: 0, y: 0, width: width, height: 800)
+                let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+                window.contentView = view
+                view.layoutSubtreeIfNeeded()
+                let representation = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                view.cacheDisplay(in: view.bounds, to: representation)
+                XCTAssertEqual(representation.size.width, width)
+                XCTAssertEqual(representation.size.height, 800)
+                if let output = ProcessInfo.processInfo.environment["PERFORMANCEDADDY_DESIGN_OUTPUT"] {
+                    let directory = URL(fileURLWithPath: output, isDirectory: true)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    let png = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
+                    try png.write(to: directory.appendingPathComponent("fan-\(hasReport ? "report" : "setup")-content-\(Int(width)).png"), options: .atomic)
+                }
+            }
+        }
+    }
     func testDashboardRendersAtSupportedNativeSizes() throws {
         let outputDirectory = ProcessInfo.processInfo.environment["PERFORMANCEDADDY_DESIGN_OUTPUT"]
         let specifications: [(label: Int, width: CGFloat, height: CGFloat)] = outputDirectory == nil

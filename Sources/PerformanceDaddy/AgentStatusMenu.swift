@@ -16,7 +16,7 @@ struct AgentMenuSummary {
     }
 
     var accessibilityLabel: String {
-        "Agent sessions: \(total) live, \(working) working, \(attention) need input, rate limited, stopped, or status unavailable, \(failed) failed"
+        "Agent sessions: \(working) recently working, \(total) detected in total, \(attention) waiting, rate limited, stopped, or status unavailable, \(failed) failed"
     }
 }
 
@@ -91,11 +91,11 @@ struct AgentStatusMenu: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("LIVE SIGNAL")
+                    Text("\(summary.working) RECENTLY WORKING")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .tracking(1.4)
                         .foregroundStyle(PerformanceTheme.mintInk)
-                    Text("\(summary.total) live \(summary.total == 1 ? "session" : "sessions")")
+                    Text("\(summary.total) agent \(summary.total == 1 ? "session" : "sessions")")
                         .font(.system(size: 24, weight: .semibold, design: .rounded))
                         .foregroundStyle(PerformanceTheme.ink)
                 }
@@ -111,14 +111,14 @@ struct AgentStatusMenu: View {
             AgentStatusDistribution(summary: summary)
             HStack(spacing: 10) {
                 countLabel("WORKING", count: summary.working, color: PerformanceTheme.mintInk)
-                countLabel("ATTENTION", count: summary.attention, color: PerformanceTheme.amber)
+                countLabel("OTHER STATES", count: summary.attention, color: PerformanceTheme.amber)
                 countLabel("FAILED", count: summary.failed, color: PerformanceTheme.coral)
             }
             .padding(.top, 10).padding(.bottom, 17)
 
             Rectangle().fill(PerformanceTheme.divider).frame(height: 1)
             if tiles.isEmpty {
-                Text("No live agent sessions")
+                Text("No detected agent sessions")
                     .font(.system(size: 14, design: .rounded))
                     .foregroundStyle(PerformanceTheme.secondaryInk)
                     .frame(maxWidth: .infinity, minHeight: 118)
@@ -127,7 +127,7 @@ struct AgentStatusMenu: View {
                     VStack(alignment: .leading, spacing: 11) {
                         AgentStatusSection(title: "Working", color: PerformanceTheme.mintInk,
                                            tiles: tiles.filter { $0.activity == .working })
-                        AgentStatusSection(title: "Attention", color: PerformanceTheme.amber,
+                        AgentStatusSection(title: "Waiting, idle or unverified", color: PerformanceTheme.amber,
                                            tiles: tiles.filter { $0.activity == .waiting || $0.activity == .rateLimited || $0.activity == .stopped || $0.activity == .unavailable })
                         AgentStatusSection(title: "Failed", color: PerformanceTheme.coral,
                                            tiles: tiles.filter { $0.activity == .failed })
@@ -162,7 +162,7 @@ struct AgentStatusMenu: View {
             .padding(.top, 15)
             VStack(alignment: .leading, spacing: 3) {
                 Text("RAM estimate \(model.usedMemory) · Pressure \(model.snapshot?.pressure ?? "Measuring")")
-                Text("\(model.portCount) open sockets · \(model.agentCount) agent processes")
+                Text("\(model.portCount) open sockets · \(model.agentCount) detected agent sessions")
             }
             .font(.system(size: 10, design: .monospaced))
             .foregroundStyle(PerformanceTheme.secondaryInk)

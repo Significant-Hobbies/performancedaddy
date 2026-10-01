@@ -7,14 +7,8 @@ public protocol SystemSampling: Sendable {
 }
 
 public actor LiveSystemSampler: SystemSampling {
-    private struct ProcessCounter: Sendable {
-        let totalNanoseconds: UInt64
-        let observedAt: Date
-    }
-
     private var previousCPUTicks: (busy: UInt64, total: UInt64)?
-    private var previousProcessCounters: [Int32: ProcessCounter] = [:]
-    private var processNames: [Int32: String] = [:]
+    private var attributionSampler = AttributionSampler()
     private var memoryReader = MemoryEvidenceReader()
     private var diskCapacity = DiskCapacityCache()
 
@@ -24,7 +18,7 @@ public actor LiveSystemSampler: SystemSampling {
         memoryReader = MemoryEvidenceReader()
         diskCapacity.reset()
         previousCPUTicks = nil
-        previousProcessCounters.removeAll()
+        attributionSampler = AttributionSampler()
     }
 
     public func sample() -> SystemSample {
@@ -34,8 +28,9 @@ public actor LiveSystemSampler: SystemSampling {
     public func sample(includeProcesses: Bool) -> SystemSample {
         let now = Date()
         let usedCPUCores = readUsedCPUCores()
-        let processes = includeProcesses ? readProcesses(at: now) : []
-        let samplerCPU = processes.first(where: { $0.id == getpid() })?.cpuCores
+        let attribution = includeProcesses ? attributionSampler.read() : nil
+        let processes = attribution?.processes ?? []
+        let samplerCPU = attribution?.observerCPU
         let memory = memoryReader.read()
         let physical = ProcessInfo.processInfo.physicalMemory
         let headroom = memory.flatMap { value -> Double? in
@@ -53,7 +48,8 @@ public actor LiveSystemSampler: SystemSampling {
             processes: Array(processes.prefix(16)),
             samplerCPUCores: samplerCPU,
             memory: memory,
-            power: PowerEvidence.read()
+            power: PowerEvidence.read(),
+            workloads: attribution?.workloads
         )
     }
 
@@ -100,92 +96,6 @@ public actor LiveSystemSampler: SystemSampling {
         let busyDelta = Double(busy - previousCPUTicks.busy)
         let totalDelta = Double(total - previousCPUTicks.total)
         return (busyDelta / totalDelta) * Double(cpuCount)
-    }
-
-    private func readProcesses(at now: Date) -> [ProcessObservation] {
-        var pids = [pid_t](repeating: 0, count: 8_192)
-        let bytes = pids.withUnsafeMutableBytes { buffer in
-            proc_listallpids(buffer.baseAddress, Int32(buffer.count))
-        }
-        guard bytes > 0 else { return [] }
-
-        let pidCount = min(Int(bytes), pids.count)
-        var nextCounters: [Int32: ProcessCounter] = [:]
-        var observations: [ProcessObservation] = []
-        observations.reserveCapacity(16)
-
-        for pid in pids.prefix(pidCount) where pid > 0 {
-            var taskInfo = proc_taskinfo()
-            let taskBytes = proc_pidinfo(
-                pid,
-                PROC_PIDTASKINFO,
-                0,
-                &taskInfo,
-                Int32(MemoryLayout<proc_taskinfo>.stride)
-            )
-            guard taskBytes == MemoryLayout<proc_taskinfo>.stride else { continue }
-
-            let total = taskInfo.pti_total_user &+ taskInfo.pti_total_system
-            nextCounters[pid] = ProcessCounter(totalNanoseconds: total, observedAt: now)
-
-            guard let previous = previousProcessCounters[pid],
-                  total >= previous.totalNanoseconds
-            else { continue }
-            let elapsed = now.timeIntervalSince(previous.observedAt)
-            guard elapsed > 0 else { continue }
-            var timebase = mach_timebase_info_data_t()
-            mach_timebase_info(&timebase)
-            let cores = Double(total - previous.totalNanoseconds) * Double(timebase.numer) / Double(timebase.denom) / 1_000_000_000 / elapsed
-            guard cores >= 0.005 else { continue }
-
-            var bsdInfo = proc_bsdinfo()
-            let bsdBytes = proc_pidinfo(
-                pid,
-                PROC_PIDTBSDINFO,
-                0,
-                &bsdInfo,
-                Int32(MemoryLayout<proc_bsdinfo>.stride)
-            )
-            let parentID = bsdBytes == MemoryLayout<proc_bsdinfo>.stride ? Int32(bsdInfo.pbi_ppid) : 0
-            let name = processNames[pid] ?? processName(pid: pid)
-            if !name.isEmpty { processNames[pid] = name }
-            let observation = ProcessObservation(
-                id: pid,
-                parentID: parentID,
-                name: name.isEmpty ? "Process \(pid)" : name,
-                cpuCores: min(cores, Double(ProcessInfo.processInfo.activeProcessorCount)),
-                residentBytes: taskInfo.pti_resident_size
-            )
-            insertIntoTopProcesses(observation, in: &observations)
-        }
-
-        previousProcessCounters = nextCounters
-        processNames = processNames.filter { nextCounters[$0.key] != nil }
-        return observations.sorted {
-            if $0.cpuCores == $1.cpuCores { return $0.residentBytes > $1.residentBytes }
-            return $0.cpuCores > $1.cpuCores
-        }
-    }
-
-    private func insertIntoTopProcesses(
-        _ observation: ProcessObservation,
-        in observations: inout [ProcessObservation]
-    ) {
-        guard observations.count >= 16 else {
-            observations.append(observation)
-            return
-        }
-        guard let lightestIndex = observations.indices.min(by: {
-            observations[$0].cpuCores < observations[$1].cpuCores
-        }), observation.cpuCores > observations[lightestIndex].cpuCores else { return }
-        observations[lightestIndex] = observation
-    }
-
-    private func processName(pid: pid_t) -> String {
-        var bytes = [CChar](repeating: 0, count: Int(MAXPATHLEN))
-        let length = proc_name(pid, &bytes, UInt32(bytes.count))
-        guard length > 0 else { return "" }
-        return String(cString: bytes)
     }
 
     private func readSwapUsed() -> UInt64? {

@@ -68,6 +68,16 @@ final class DiagnosisViewModel: ObservableObject {
         beginRecording(comparingTo: savedBaselineReport, fromSavedBaseline: savedBaselineReport != nil)
     }
 
+    /// A fan check compares only with the open recording, not a potentially
+    /// unrelated saved slowdown baseline. Recaptures preserve recording length.
+    func recordFanCheck() {
+        guard !isRecording else { return }
+        if let report {
+            selectedLength = report.capture.duration >= 60 ? .standard : .quick
+        }
+        beginRecording(comparingTo: report, fromSavedBaseline: false)
+    }
+
     func performRecommendedAction() {
         if report?.finding.kind == .healthy || report?.finding.kind == .inconclusive {
             selectedLength = .standard
