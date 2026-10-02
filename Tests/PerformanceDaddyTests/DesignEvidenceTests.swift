@@ -12,9 +12,13 @@ final class DesignEvidenceTests: XCTestCase {
             let date = Date()
             let started = UInt64((date.timeIntervalSince1970 - 180) * 1_000_000)
             let processes: [LiveProcess] = (0..<count).map { index in
-                LiveProcess(id: .init(pid: Int32(30_000 + index), started: started), parent: 1, uid: getuid(), name: "codex",
-                            executable: "/opt/bin/codex", directory: "/Users/example/project-\(index)", cpu: Double(index),
-                            memory: UInt64(100 + index * 10) * 1_048_576, hasControllingTerminal: true)
+                let identity = ProcessIdentity(pid: Int32(30_000 + index), started: started)
+                let directory = "/Users/example/project-\(index)"
+                let cpu = Double(index)
+                let memory: UInt64 = UInt64(100 + index * 10) * 1_048_576
+                return LiveProcess(id: identity, parent: 1, uid: getuid(), name: "codex",
+                                   executable: "/opt/bin/codex", directory: directory, cpu: cpu,
+                                   memory: memory, hasControllingTerminal: true)
             }
             let system = SystemSample(timestamp: date, usedCPUCores: 1, memoryHeadroomRatio: 0.5, swapUsedBytes: 0,
                                       diskFreeBytes: nil, thermal: .nominal, processes: [])
