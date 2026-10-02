@@ -6,6 +6,48 @@ import XCTest
 
 @MainActor
 final class DesignEvidenceTests: XCTestCase {
+    func testAgentWallFitsViewportWithoutScrollAtSparseAndDenseCounts() throws {
+        for count in [1, 6, 20] {
+            let model = LiveViewModel()
+            let date = Date()
+            let started = UInt64((date.timeIntervalSince1970 - 180) * 1_000_000)
+            let processes: [LiveProcess] = (0..<count).map { index in
+                LiveProcess(id: .init(pid: Int32(30_000 + index), started: started), parent: 1, uid: getuid(), name: "codex",
+                            executable: "/opt/bin/codex", directory: "/Users/example/project-\(index)", cpu: Double(index),
+                            memory: UInt64(100 + index * 10) * 1_048_576, hasControllingTerminal: true)
+            }
+            let system = SystemSample(timestamp: date, usedCPUCores: 1, memoryHeadroomRatio: 0.5, swapUsedBytes: 0,
+                                      diskFreeBytes: nil, thermal: .nominal, processes: [])
+            model.snapshot = LiveSnapshot(date: date, processes: processes, system: system, pressure: "Normal", compressed: 0, unavailableProcesses: 0, portsDate: date, scanSeconds: 0.01)
+            for (index, process) in processes.enumerated() {
+                let event = ["UserPromptSubmit", "Stop", "PermissionRequest"][index % 3]
+                model.recordAgentSignal(try XCTUnwrap(AgentWallSignal(userInfo: [
+                    "pid": NSNumber(value: process.id.pid), "started": NSNumber(value: started), "provider": "Codex",
+                    "event": event, "timestamp": NSNumber(value: date.timeIntervalSince1970),
+                    "taskLabel": "Verify the agent session and memory changes for project \(index)"
+                ])))
+            }
+            let size = NSSize(width: 1_440, height: 900)
+            let view = NSHostingView(rootView: AgentWallView(model: model, requestsFullScreen: false).frame(width: size.width, height: size.height))
+            view.frame = NSRect(origin: .zero, size: size)
+            let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+            window.contentView = view
+            view.layoutSubtreeIfNeeded()
+            func hasScrollView(_ node: NSView) -> Bool { node is NSScrollView || node.subviews.contains(where: hasScrollView) }
+            XCTAssertFalse(hasScrollView(view))
+            XCTAssertEqual(model.agentWallTiles.count, count)
+            let representation = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: representation)
+            XCTAssertEqual(representation.size, size)
+            if let output = ProcessInfo.processInfo.environment["PERFORMANCEDADDY_DESIGN_OUTPUT"] {
+                let directory = URL(fileURLWithPath: output, isDirectory: true)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let png = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
+                try png.write(to: directory.appendingPathComponent("agent-wall-\(count).png"), options: .atomic)
+            }
+        }
+    }
+
     func testFanInvestigationRendersSetupAndUnavailableEvidenceAtNativeSizes() throws {
         for width: CGFloat in [760, 1_220] {
             for hasReport in [false, true] {

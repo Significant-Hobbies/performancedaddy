@@ -183,6 +183,21 @@ final class WorkloadTests: XCTestCase {
         XCTAssertTrue(ports.prefix(Int(count)).contains { $0.port == udp.port && $0.protocol == IPPROTO_UDP && $0.loopback == 1 })
     }
 
+    func testBackgroundSamplerDropsSocketsAndImmediatelyRestoresOnDemand() async throws {
+        let tcp = try boundSocket(type: SOCK_STREAM)
+        defer { close(tcp.fd) }
+        XCTAssertEqual(listen(tcp.fd, 1), 0)
+        let sampler = WorkloadSampler()
+        let first = await sampler.sample()
+        XCTAssertTrue(try XCTUnwrap(first.processes.first { $0.id.pid == getpid() }).ports.contains { $0.port == tcp.port })
+        let background = await sampler.sample(includePorts: false)
+        XCTAssertEqual(background.portsDate, .distantPast)
+        XCTAssertTrue(background.processes.allSatisfy { $0.ports.isEmpty && $0.portsIncomplete })
+        let restored = await sampler.sample()
+        XCTAssertGreaterThan(restored.portsDate, background.portsDate)
+        XCTAssertTrue(try XCTUnwrap(restored.processes.first { $0.id.pid == getpid() }).ports.contains { $0.port == tcp.port })
+    }
+
     func testStopRejectsReusedPIDAndStopsOnlyReviewedChild() throws {
         let child = Process()
         child.executableURL = URL(fileURLWithPath: "/bin/sleep")

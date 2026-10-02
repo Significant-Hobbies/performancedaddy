@@ -162,7 +162,9 @@ struct AgentStatusMenu: View {
             .padding(.top, 15)
             VStack(alignment: .leading, spacing: 3) {
                 Text("RAM estimate \(model.usedMemory) · Pressure \(model.snapshot?.pressure ?? "Measuring")")
-                Text("\(model.portCount) open sockets · \(model.agentCount) detected agent sessions")
+                Text(model.snapshot?.portsDate == .distantPast
+                     ? "Sockets awaiting refresh · \(model.agentCount) detected agent sessions"
+                     : "\(model.portCount) open sockets · \(model.agentCount) detected agent sessions")
             }
             .font(.system(size: 10, design: .monospaced))
             .foregroundStyle(PerformanceTheme.secondaryInk)

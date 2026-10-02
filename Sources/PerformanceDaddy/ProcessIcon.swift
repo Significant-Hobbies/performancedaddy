@@ -9,6 +9,7 @@ enum ProcessIconCache {
     static let images: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
         cache.countLimit = 160
+        cache.totalCostLimit = 2 * 1024 * 1024
         return cache
     }()
 
@@ -29,11 +30,16 @@ enum ProcessIconCache {
               let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
-        source.draw(in: NSRect(x: 0, y: 0, width: 64, height: 64), from: .zero, operation: .copy, fraction: 1)
+        let target = NSRect(x: 0, y: 0, width: 64, height: 64)
+        if let representation = source.bestRepresentation(for: target, context: context, hints: nil) {
+            representation.draw(in: target)
+        } else {
+            source.draw(in: target, from: .zero, operation: .copy, fraction: 1)
+        }
         NSGraphicsContext.restoreGraphicsState()
         let icon = NSImage(size: NSSize(width: 32, height: 32))
         icon.addRepresentation(bitmap)
-        images.setObject(icon, forKey: path as NSString)
+        images.setObject(icon, forKey: path as NSString, cost: bitmap.bytesPerRow * bitmap.pixelsHigh)
         return icon
     }
 }

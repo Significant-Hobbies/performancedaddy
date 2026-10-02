@@ -380,5 +380,19 @@
     "verification": "Native table and wall each show six including unverified roots. Regression fixture tests six idle roots plus a nested Codex, nested hooks, independent siblings, confirmed exits, SessionEnd and turn Stop. Menu uses the same eligible wall population.",
     "checks": "XcodeBuildMCP CLI: 46 focused tests and 144 full-suite tests passed. git diff --check passed.",
     "limitations": "No new visual system or layout. Menu native popup and full VoiceOver not verified; menu summary tested. Local development preview only, no public release."
+  },
+  "agentWallViewportReview": {
+    "date": "2026-10-02",
+    "mode": "preserve",
+    "direction": "Existing owner-approved RAM-weighted Daddy black/mint tiles",
+    "contract": "Fit all agent tiles to the available fullscreen viewport without scrolling; scale text and disclose less secondary detail in compact tiles",
+    "evidence": [
+      "artifacts/design/agent-wall-fit/agent-wall-1.png",
+      "artifacts/design/agent-wall-fit/agent-wall-6.png",
+      "artifacts/design/agent-wall-fit/agent-wall-20.png"
+    ],
+    "checks": "Native NSHostingView renders at 1440x900 for 1, 6 and 20 sessions; no NSScrollView present. Focused session and artwork regressions pass. Design workflow check passed.",
+    "review": "Root manually inspected sparse and dense native renders with working, stopped and needs-input fixture states. Dense tiles retain status, name and CPU/RAM; request labels truncate when needed. No new visual system.",
+    "limits": "Offscreen fixture rendering, not the installed app. Native UI provider startup failed with Sky Computer Use native pipe startup failed. Fullscreen transition, live hook behavior and full VoiceOver remain unverified; no installed release changed."
   }
 }

@@ -16,6 +16,7 @@ struct PerformanceDaddyApp: App {
         WindowGroup(id: "main") {
             DashboardView(model: diagnosis, live: live)
                 .frame(minWidth: 980, minHeight: 800)
+                .background(MonitoringSurface(model: live))
                 .task { updates.start(live: live, diagnosis: diagnosis) }
         }
         .defaultSize(width: 1_180, height: 800)
@@ -31,12 +32,14 @@ struct PerformanceDaddyApp: App {
         WindowGroup(id: "agent-wall") {
             AgentWallView(model: live)
                 .frame(minWidth: 520, minHeight: 360)
+                .background(MonitoringSurface(model: live))
                 .task { live.start() }
         }
         .defaultSize(width: 1080, height: 720)
         .windowStyle(.hiddenTitleBar)
         MenuBarExtra {
             AgentStatusMenu(model: live, updates: updates)
+                .background(MonitoringSurface(model: live))
         } label: {
             AgentStatusMenuBarLabel(model: live)
         }
@@ -53,5 +56,5 @@ final class PerformanceDaddyDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 enum PerformanceAppIcon {
-    static let image = DaddyResources.url(forResource: "PerformanceDaddy").flatMap(NSImage.init(contentsOf:))
+    static let image = DecodedArtwork.image(url: DaddyResources.url(forResource: "PerformanceDaddy"), maximumPixels: 256)
 }

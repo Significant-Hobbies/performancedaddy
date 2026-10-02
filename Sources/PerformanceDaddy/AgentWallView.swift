@@ -4,24 +4,22 @@ import SwiftUI
 
 struct AgentWallView: View {
     @ObservedObject var model: LiveViewModel
+    var requestsFullScreen = true
     @State private var linkTarget: LiveViewModel.AgentWallTile?
 
     var body: some View {
         GeometryReader { geometry in
             let tiles = model.agentWallTiles
-            ScrollView {
-                AgentTileMap(weights: weights(for: tiles), spacing: 12) {
-                    ForEach(tiles) { tile in tileView(tile) }
-                }
-                .frame(width: max(1, geometry.size.width - 40),
-                       height: max(geometry.size.height - 40,
-                                   geometry.size.height - 40 + CGFloat(max(0, tiles.count - 8)) * 120))
-                .padding(20)
+            AgentTileMap(weights: weights(for: tiles), spacing: 12) {
+                ForEach(tiles) { tile in tileView(tile) }
             }
-            .scrollIndicators(.hidden)
+            .frame(width: max(1, geometry.size.width - 40), height: max(1, geometry.size.height - 40))
+            .padding(20)
         }
         .background(PerformanceTheme.fog)
-        .background(AgentWallFullScreenRequest())
+        .background {
+            if requestsFullScreen { AgentWallFullScreenRequest() }
+        }
         .preferredColorScheme(.dark)
         .sheet(item: $linkTarget) { tile in
             CodexSessionLinkSheet(model: model, tile: tile)
@@ -35,7 +33,7 @@ struct AgentWallView: View {
         case .failed: PerformanceTheme.coral
         }
         return GeometryReader { geometry in
-            let scale = min(2.8, max(1, min(geometry.size.width / 320, geometry.size.height / 200)))
+            let scale = min(2.8, max(0.65, min(geometry.size.width / 320, geometry.size.height / 200)))
             VStack(alignment: .leading, spacing: 10 * scale) {
                 HStack(spacing: 8 * scale) {
                     Circle().fill(color).frame(width: 10 * scale, height: 10 * scale)
@@ -53,26 +51,28 @@ struct AgentWallView: View {
                     .font(.system(size: 22 * scale, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Text(tile.workspace.map { "WORKSPACE · \($0)" } ?? "WORKSPACE UNAVAILABLE")
-                    .font(.system(size: 11 * scale, weight: .medium, design: .monospaced))
-                    .foregroundStyle(PerformanceTheme.secondaryInk)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                if let task = tile.taskLabel {
-                    Text("LATEST REQUEST · \(elapsed(tile.taskObservedAt))")
-                        .font(.system(size: 9 * scale, weight: .bold, design: .monospaced))
-                        .tracking(1)
-                        .foregroundStyle(PerformanceTheme.secondaryInk)
-                    Text(task)
-                        .font(.system(size: 15 * scale, weight: .medium, design: .rounded))
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.7)
-                } else {
-                    Text(tile.evidenceSummary)
-                        .font(.system(size: 11 * scale, design: .rounded))
+                if geometry.size.height >= 150 {
+                    Text(tile.workspace.map { "WORKSPACE · \($0)" } ?? "WORKSPACE UNAVAILABLE")
+                        .font(.system(size: 11 * scale, weight: .medium, design: .monospaced))
                         .foregroundStyle(PerformanceTheme.secondaryInk)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+                    if let task = tile.taskLabel {
+                        Text("LATEST REQUEST · \(elapsed(tile.taskObservedAt))")
+                            .font(.system(size: 9 * scale, weight: .bold, design: .monospaced))
+                            .tracking(1)
+                            .foregroundStyle(PerformanceTheme.secondaryInk)
+                        Text(task)
+                            .font(.system(size: 15 * scale, weight: .medium, design: .rounded))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.7)
+                    } else {
+                        Text(tile.evidenceSummary)
+                            .font(.system(size: 11 * scale, design: .rounded))
+                            .foregroundStyle(PerformanceTheme.secondaryInk)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
                 }
                 if geometry.size.height > 270 {
                     Group {
@@ -111,7 +111,7 @@ struct AgentWallView: View {
                 .foregroundStyle(PerformanceTheme.secondaryInk)
                 .lineLimit(1)
                 .minimumScaleFactor(0.55)
-                if tile.allowsSessionLink {
+                if tile.allowsSessionLink && geometry.size.height >= 150 {
                     Button(tile.isSessionLinked ? "CHANGE SESSION LINK" : "LINK CODEX SESSION") {
                         linkTarget = tile
                     }
@@ -126,6 +126,7 @@ struct AgentWallView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(color.opacity(0.13), in: RoundedRectangle(cornerRadius: 15))
             .overlay(RoundedRectangle(cornerRadius: 15).stroke(color.opacity(0.8), lineWidth: 2))
+            .clipped()
             .accessibilityElement(children: tile.allowsSessionLink ? .contain : .ignore)
             .accessibilityLabel("\(tile.displayName), \(tile.activity.rawValue), \(tile.evidenceSummary), workspace \(tile.workspace ?? "unavailable"), latest request \(tile.taskLabel ?? "unavailable"), host \(tile.host ?? "unavailable"), running \(tile.runningFor ?? "unknown"), resident RAM \(LiveViewModel.bytes(tile.process.memory))")
             .help("\(tile.activity.rawValue) · PID \(tile.id.pid) · resident family RAM estimate. Latest request is a short label from the last prompt hook, not proof of current work. Shared pages may overlap.")

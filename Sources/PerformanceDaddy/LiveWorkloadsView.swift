@@ -93,7 +93,7 @@ struct LiveWorkloadsView: View {
             Divider()
             metricButton(.swap, title: "Swap", value: model.snapshot?.system.swapUsedBytes.map(LiveViewModel.bytes) ?? "—", detail: "allocated on disk", color: PerformanceTheme.blue)
             Divider()
-            metricButton(.sockets, title: "Open sockets", value: model.snapshot == nil ? "—" : "\(model.portCount)", detail: "TCP listeners · bound UDP", color: PerformanceTheme.cyan)
+            metricButton(.sockets, title: "Open sockets", value: model.snapshot == nil || model.snapshot?.portsDate == .distantPast ? "—" : "\(model.portCount)", detail: "TCP listeners · bound UDP", color: PerformanceTheme.cyan)
         }
         .frame(height: 82)
         .padding(.vertical, 8)
@@ -514,7 +514,8 @@ struct LiveWorkloadsView: View {
                 Text("\(model.rows(for: page).count) shown")
                 Spacer()
                 if let snapshot = model.snapshot {
-                    Text("Ports \(snapshot.portsDate, style: .time)")
+                    if snapshot.portsDate == .distantPast { Text("Sockets awaiting refresh") }
+                    else { Text("Ports \(snapshot.portsDate, style: .time)") }
                     let partial = snapshot.processes.filter(\.portsIncomplete).count
                     if snapshot.unavailableProcesses > 0 || partial > 0 {
                         Text("Partial coverage")

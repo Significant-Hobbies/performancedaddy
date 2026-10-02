@@ -1,5 +1,27 @@
 # PerformanceDaddy status
 
+## 2026-10-02 — local session, viewport and memory follow-up
+
+Prepared locally under [issue #15](https://github.com/Significant-Hobbies/performancedaddy/issues/15).
+Early hooks reconcile by exact process/session identity; links survive incomplete
+inventories until native exit evidence. The existing agent wall fits its viewport
+without a ScrollView. Artwork decoding and icon-cache costs are bounded.
+Monitoring tracks actual visible surfaces: hidden mode uses a 30-second,
+socket-free inventory without resource histories; hooks and two-second exit
+checks stay active. Reopening requests fresh evidence and resets rate continuity.
+
+All 155 ordinary package tests pass, plus the separate opt-in Release native
+page probe; Release build, design and whitespace checks pass. DaddyRad's shared
+read-only MCP passes its four unit tests and all-eight-tool protocol regression
+against the updated native core. Three matched native-page probe pairs show
+median resident memory 121.45 to 116.44 MiB and footprint 63.09 to 62.13 MiB.
+These are modest test-host/page results, not a 10x complete-app improvement.
+See [RESOURCE_FOOTPRINT.md](RESOURCE_FOOTPRINT.md) for reproduction and limits.
+
+Native UI provider startup still fails. Live fullscreen/session acceptance and
+a comparable complete-app memory measurement remain open. No installation,
+commit, push or release occurred.
+
 ## 2026-09-27 — public 0.2.8 build 13 installed
 
 The owner requested an even smaller battery mark without a numeric count or

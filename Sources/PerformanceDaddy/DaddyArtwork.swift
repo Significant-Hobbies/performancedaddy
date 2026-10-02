@@ -5,8 +5,8 @@ import SwiftUI
 struct DaddyArtwork: View {
     var brand = false
     var topic = 5
-    private static let mark = DaddyResources.url(forResource: "PerformanceDaddy").flatMap(NSImage.init(contentsOf:))
-    private static let sheet = DaddyResources.url(forResource: "PageDoodles").flatMap(NSImage.init(contentsOf:))
+    private static let mark = DecodedArtwork.image(url: DaddyResources.url(forResource: "PerformanceDaddy"), maximumPixels: 128)
+    private static let sheet = DecodedArtwork.image(url: DaddyResources.url(forResource: "PageDoodles"), maximumPixels: 432)
     var body: some View {
         GeometryReader { geometry in
             if brand, let image = Self.mark {

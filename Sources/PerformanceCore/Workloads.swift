@@ -209,7 +209,7 @@ public actor WorkloadSampler {
         await systemSampler.resetMeasurementWindow()
     }
 
-    public func sample() async -> LiveSnapshot {
+    public func sample(includePorts: Bool = true) async -> LiveSnapshot {
         let began = ProcessInfo.processInfo.systemUptime
         let now = Date()
         let system = await systemSampler.sample(includeProcesses: false)
@@ -219,7 +219,14 @@ public actor WorkloadSampler {
         var processes: [LiveProcess] = []
         var next: [ProcessIdentity: (UInt64, Double)] = [:]
         var missing = count <= 0 || count >= requested ? 1 : 0
-        let scanPorts = now.timeIntervalSince(portsDate) >= Self.portRefreshInterval
+        if !includePorts {
+            sockets.removeAll()
+            portsDate = .distantPast
+        }
+        let scanPorts = includePorts && now.timeIntervalSince(portsDate) >= Self.portRefreshInterval
+        // Reuse one output buffer throughout the census instead of allocating
+        // 512 port slots for each PID, including processes with no sockets.
+        var portBuffer = scanPorts ? [PDPort](repeating: PDPort(), count: 512) : []
         for pid in pids.prefix(max(0, min(Int(count), pids.count))) where pid > 0 {
             var raw = PDProcess()
             guard pd_process(pid, &raw) == 1 else { missing += 1; continue }
@@ -231,12 +238,11 @@ public actor WorkloadSampler {
             }
             next[identity] = (raw.cpu, began)
             if scanPorts {
-                var ports = [PDPort](repeating: PDPort(), count: 512)
                 var incomplete: Int32 = 0
-                let portCount = ports.withUnsafeMutableBufferPointer {
+                let portCount = portBuffer.withUnsafeMutableBufferPointer {
                     pd_ports(pid, $0.baseAddress, Int32($0.count), &incomplete)
                 }
-                let values = ports.prefix(Int(portCount)).map { value in
+                let values = portBuffer.prefix(Int(portCount)).map { value in
                     var value = value
                     return ListeningPort(port: value.port, transport: value.protocol == IPPROTO_TCP ? "TCP" : "UDP",
                                          address: Self.string(&value.address), loopback: value.loopback != 0)

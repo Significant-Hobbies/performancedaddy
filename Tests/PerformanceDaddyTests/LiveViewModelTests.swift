@@ -5,6 +5,123 @@ import XCTest
 
 @MainActor
 final class LiveViewModelTests: XCTestCase {
+    func testIndependentSurfacesPreserveForegroundModeUntilLastOneHides() {
+        let model = LiveViewModel()
+        let main = UUID(), wall = UUID(), menu = UUID()
+        XCTAssertEqual(model.automaticRefreshInterval, 30)
+        model.setSurfaceVisible(main, visible: true)
+        model.setSurfaceVisible(wall, visible: true)
+        model.setSurfaceVisible(menu, visible: true)
+        model.setSurfaceVisible(main, visible: false)
+        model.setSurfaceVisible(wall, visible: false)
+        XCTAssertTrue(model.hasVisibleSurface)
+        XCTAssertEqual(model.automaticRefreshInterval, 10)
+        model.setSurfaceVisible(menu, visible: false)
+        XCTAssertFalse(model.hasVisibleSurface)
+        XCTAssertEqual(model.automaticRefreshInterval, 30)
+        model.setSurfaceVisible(wall, visible: true)
+        XCTAssertEqual(model.automaticRefreshInterval, 10)
+    }
+
+    func testBackgroundStopsRetainingHistoryAndReopenStartsFreshRates() async throws {
+        let model = LiveViewModel()
+        let surface = UUID()
+        model.setSurfaceVisible(surface, visible: true)
+        await model.refresh()
+        try await Task.sleep(for: .milliseconds(100))
+        await model.refresh()
+        XCTAssertNotNil(model.snapshot?.system.memory?.rateIntervalSeconds)
+        XCTAssertFalse(model.memoryHistory.isEmpty)
+        let own = try XCTUnwrap(model.snapshot?.processes.first { $0.id.pid == getpid() })
+        XCTAssertNotNil(model.memoryTrend(for: own))
+        model.setSurfaceVisible(surface, visible: false)
+        await model.refresh(background: true)
+        XCTAssertTrue(model.memoryHistory.isEmpty)
+        XCTAssertNil(model.memoryTrend(for: own))
+        XCTAssertEqual(model.snapshot?.portsDate, .distantPast)
+        model.setSurfaceVisible(surface, visible: true)
+        await model.refresh()
+        XCTAssertNotEqual(model.snapshot?.portsDate, .distantPast)
+        XCTAssertNil(model.snapshot?.system.memory?.rateIntervalSeconds)
+        XCTAssertNil(model.snapshot?.system.usedCPUCores)
+        XCTAssertNil(model.memoryTrend(for: own))
+    }
+
+    func testBackgroundRefreshRetainsAnExactIdentityHook() async throws {
+        let model = LiveViewModel()
+        await model.refresh(background: true)
+        let own = try XCTUnwrap(model.snapshot?.processes.first { $0.id.pid == getpid() })
+        let signal = try XCTUnwrap(AgentWallSignal(userInfo: [
+            "pid": NSNumber(value: own.id.pid), "started": NSNumber(value: own.id.started),
+            "provider": "Codex", "event": "Stop", "timestamp": NSNumber(value: Date().timeIntervalSince1970)
+        ]))
+        model.recordAgentSignal(signal)
+        await model.refresh(background: true)
+        XCTAssertEqual(model.agentSignals[own.id]?.event, "Stop")
+        await model.checkAgentPresence()
+        XCTAssertEqual(model.agentSignals[own.id]?.event, "Stop")
+    }
+
+    func testPendingHookWakesBackgroundInventoryAfterNativeIdentityCheck() async throws {
+        let native = await WorkloadSampler().sample(includePorts: false)
+        let own = try XCTUnwrap(native.processes.first { $0.id.pid == getpid() })
+        let model = LiveViewModel()
+        model.recordAgentSignal(try XCTUnwrap(AgentWallSignal(userInfo: [
+            "pid": NSNumber(value: own.id.pid), "started": NSNumber(value: own.id.started),
+            "provider": "Codex", "event": "Stop", "timestamp": NSNumber(value: Date().timeIntervalSince1970)
+        ])))
+        XCTAssertNil(model.snapshot)
+        await model.checkAgentPresence()
+        XCTAssertEqual(model.agentSignals[own.id]?.event, "Stop")
+        XCTAssertEqual(model.snapshot?.portsDate, .distantPast)
+        XCTAssertTrue(model.memoryHistory.isEmpty)
+    }
+
+    func testHookBeforeFirstSnapshotBecomesVisibleOnlyAfterMatchingIdentityArrives() throws {
+        let model = LiveViewModel()
+        let agent = process(12345, name: "codex", cpu: 1)
+        let signal = try XCTUnwrap(AgentWallSignal(userInfo: [
+            "pid": NSNumber(value: agent.id.pid), "started": NSNumber(value: agent.id.started),
+            "provider": "Codex", "event": "UserPromptSubmit", "sessionKey": AgentSessionKey.make("fixture-session")!,
+            "timestamp": NSNumber(value: Date().timeIntervalSince1970), "taskLabel": "Early request"
+        ]))
+        model.recordAgentSignal(signal)
+        XCTAssertTrue(model.agentWallTiles.isEmpty)
+        let reused = LiveProcess(id: .init(pid: agent.id.pid, started: 11), parent: 1, uid: getuid(), name: "codex", executable: "/opt/bin/codex", directory: "/tmp", cpu: 0, memory: 1, hasControllingTerminal: true)
+        model.snapshot = snapshot([reused])
+        XCTAssertEqual(model.agentWallTiles.first?.activity, .unavailable)
+        model.snapshot = snapshot([agent])
+        XCTAssertEqual(model.agentWallTiles.first?.activity, .working)
+        XCTAssertEqual(model.agentWallTiles.first?.taskLabel, "Early request")
+    }
+
+    func testEarlySharedHostHooksRetainSeparateSessionsUntilInventoryArrives() throws {
+        let model = LiveViewModel()
+        let host = LiveProcess(id: .init(pid: 12340, started: 10), parent: 1, uid: getuid(), name: "codex", executable: "/opt/bin/codex", directory: "/tmp", cpu: 1, memory: 1)
+        let first = process(12341, name: "codex", cpu: 0)
+        let second = process(12342, name: "codex", cpu: 0)
+        let sessions = ["019d0000-0000-7000-8000-000000000011", "019d0000-0000-7000-8000-000000000012"]
+        for (index, session) in sessions.enumerated() {
+            model.recordAgentSignal(try XCTUnwrap(AgentWallSignal(userInfo: [
+                "pid": NSNumber(value: host.id.pid), "started": NSNumber(value: host.id.started),
+                "provider": "Codex", "event": index == 0 ? "Stop" : "UserPromptSubmit",
+                "sessionKey": AgentSessionKey.make(session)!, "timestamp": NSNumber(value: Date().timeIntervalSince1970),
+                "taskLabel": "Session \(index)"
+            ])))
+        }
+        model.snapshot = snapshot([host, first, second])
+        XCTAssertEqual(model.sharedCodexSignals.count, 2)
+        XCTAssertNil(model.linkCodexSession(sessions[0], to: first.id))
+        XCTAssertNil(model.linkCodexSession(sessions[1], to: second.id))
+        XCTAssertEqual(model.agentWallTiles.first(where: { $0.id == first.id })?.activity, .stopped)
+        XCTAssertEqual(model.agentWallTiles.first(where: { $0.id == second.id })?.activity, .working)
+        // One unreadable inventory does not free a session link for reassignment.
+        model.snapshot = snapshot([host, second])
+        XCTAssertNotNil(model.linkCodexSession(sessions[0], to: second.id))
+        model.snapshot = snapshot([host, first, second])
+        XCTAssertEqual(model.agentWallTiles.first(where: { $0.id == first.id })?.activity, .stopped)
+    }
+
     func testLiveRefreshCadenceHasLowOverheadFloorAndBoundedBackoff() {
         XCTAssertEqual(LiveViewModel.refreshInterval(after: nil), 10)
         XCTAssertEqual(LiveViewModel.refreshInterval(after: .nan), 10)
@@ -65,27 +182,25 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(model.rows(for: .workloads).map(\.id.pid), [901, 902])
     }
     func testReviewedOwnedChildStopReachesLifecycleJournal() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("performancedaddy-stop-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let executable = directory.appendingPathComponent("sleep")
-        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/bin/sleep"), to: executable)
         let child = Process()
-        child.executableURL = executable
+        // Use the installed system binary for this owned child. The copied
+        // fixture exited with SIGKILL before review in combined native UI runs.
+        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
         child.arguments = ["30"]
         try child.run()
         defer {
             if child.isRunning { child.terminate() }
             child.waitUntilExit()
-            try? FileManager.default.removeItem(at: directory)
         }
         let model = LiveViewModel()
         await model.refresh()
         let observed = try XCTUnwrap(model.snapshot?.processes.first { $0.id.pid == child.processIdentifier })
         model.prepare([observed])
         XCTAssertEqual(model.review?.targets.count, 1)
+        if !child.isRunning { XCTFail("Disposable child exited before review: status \(child.terminationStatus)") }
         await model.confirmStop(force: false)
         XCTAssertEqual(model.outcomes.count, 1)
-        XCTAssertTrue(model.outcomes[0].signalSent)
+        XCTAssertTrue(model.outcomes[0].signalSent, model.outcomes[0].message)
         XCTAssertNotNil(model.outcomes[0].signalDate)
         XCTAssertTrue(model.lifecycle.events.contains { $0.text.contains("signal sent") })
         XCTAssertTrue(model.lifecycle.events.contains { $0.text.contains("Exit confirmed") })

@@ -55,7 +55,11 @@ final class LiveViewModel: ObservableObject {
     struct MemoryPoint: Identifiable { let id = UUID(); let date: Date; let used: Double }
     struct Review: Identifiable { let id = UUID(); let targets: [LiveProcess] }
     @Published var snapshot: LiveSnapshot? {
-        didSet { index = WorkloadIndex(snapshot?.processes ?? []); rowCache.removeAll(); agentRows = nil; cachedRoots = nil }
+        didSet {
+            index = WorkloadIndex(snapshot?.processes ?? [])
+            rowCache.removeAll(); agentRows = nil; cachedRoots = nil
+            reconcilePendingAgentSignals()
+        }
     }
     @Published var search = "" { didSet { rowCache.removeAll() } }
     @Published var sortOrder = [KeyPathComparator(\LiveProcess.sortCPU, order: .reverse)] { didSet { rowCache.removeAll() } }
@@ -72,6 +76,11 @@ final class LiveViewModel: ObservableObject {
     @Published private(set) var agentSignals: [ProcessIdentity: AgentWallSignal] = [:]
     @Published private(set) var sharedCodexSignals: [String: AgentWallSignal] = [:]
     @Published private(set) var codexSessionLinks: [ProcessIdentity: String] = [:]
+    private struct PendingAgentSignalKey: Hashable {
+        let process: ProcessIdentity
+        let session: String?
+    }
+    private var pendingAgentSignals: [PendingAgentSignalKey: AgentWallSignal] = [:]
     @Published private(set) var absentAgentProcesses: Set<ProcessIdentity> = [] {
         didSet { rowCache.removeValue(forKey: .agents) }
     }
@@ -79,6 +88,12 @@ final class LiveViewModel: ObservableObject {
     private let sampler = WorkloadSampler()
     private var task: Task<Void, Never>?
     private var agentPresenceTask: Task<Void, Never>?
+    private var visibleSurfaces: Set<UUID> = []
+    private var surfaceRefreshTask: Task<Void, Never>?
+    var hasVisibleSurface: Bool { !visibleSurfaces.isEmpty }
+    var automaticRefreshInterval: Double {
+        hasVisibleSurface ? Self.refreshInterval(after: snapshot?.scanSeconds) : 30
+    }
     private var index = WorkloadIndex([])
     private var rowCache: [LivePage: [LiveProcess]] = [:]
     private var agentRows: [LiveProcess]?
@@ -147,14 +162,63 @@ final class LiveViewModel: ObservableObject {
                     objectWillChange.send()
                     persistLifecycle()
                 }
-                if !paused && review == nil && !performingAction { await refresh() }
-                let interval = Self.refreshInterval(after: snapshot?.scanSeconds)
+                if !paused && review == nil && !performingAction { await refresh(background: !hasVisibleSurface) }
+                let interval = automaticRefreshInterval
                 do { try await Task.sleep(for: .seconds(interval)) } catch { return }
             }
         }
     }
 
+    func setSurfaceVisible(_ id: UUID, visible: Bool) {
+        let wasVisible = hasVisibleSurface
+        if visible { visibleSurfaces.insert(id) } else { visibleSurfaces.remove(id) }
+        guard wasVisible != hasVisibleSurface else { return }
+        needsNewMeasurementWindow = true
+        processHistory.reset()
+        memoryHistory.removeAll()
+        rowCache.removeAll()
+        if !hasVisibleSurface {
+            ProcessIconCache.images.removeAllObjects()
+        } else if task != nil {
+            surfaceRefreshTask?.cancel()
+            surfaceRefreshTask = Task { [weak self] in
+                // A visibility change can arrive while the old-mode sample is
+                // in flight. Wait for it, then collect current visible evidence.
+                while self?.refreshing == true {
+                    do { try await Task.sleep(for: .milliseconds(25)) } catch { return }
+                }
+                guard !Task.isCancelled, let self, self.hasVisibleSurface,
+                      !self.paused, self.review == nil, !self.performingAction else { return }
+                await self.refresh()
+            }
+        }
+    }
+
     func recordAgentSignal(_ signal: AgentWallSignal) {
+        guard snapshot?.processes.contains(where: { $0.id == signal.process }) == true else {
+            let key = PendingAgentSignalKey(process: signal.process, session: signal.sessionKey)
+            if let previous = pendingAgentSignals[key] {
+                guard signal.observedAt >= previous.observedAt else { return }
+                pendingAgentSignals[key] = signal.carryingForward(from: previous)
+            } else { pendingAgentSignals[key] = signal }
+            // Hooks can arrive before the first sample or during an incomplete
+            // inventory. Buffer briefly, but do not invent a visible session.
+            pendingAgentSignals = Dictionary(pendingAgentSignals.sorted { $0.value.observedAt > $1.value.observedAt }.prefix(256).map { ($0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
+            return
+        }
+        acceptAgentSignal(signal)
+    }
+
+    private func reconcilePendingAgentSignals() {
+        let live = Set(snapshot?.processes.map(\.id) ?? [])
+        let ready = pendingAgentSignals.values.filter { live.contains($0.process) && Date().timeIntervalSince($0.observedAt) < 120 }
+        pendingAgentSignals = pendingAgentSignals.filter {
+            !live.contains($0.key.process) && Date().timeIntervalSince($0.value.observedAt) < 120
+        }
+        for signal in ready { acceptAgentSignal(signal) }
+    }
+
+    private func acceptAgentSignal(_ signal: AgentWallSignal) {
         if signal.provider == "Codex", let key = signal.sessionKey,
            let source = snapshot?.processes.first(where: { $0.id == signal.process }),
            source.agent == "Codex", !source.hasControllingTerminal {
@@ -183,8 +247,7 @@ final class LiveViewModel: ObservableObject {
         guard snapshot?.processes.contains(where: {
             $0.id == process && $0.agent == "Codex" && $0.hasControllingTerminal
         }) == true else { return "This Codex terminal is no longer running." }
-        let live = Set(snapshot?.processes.map(\.id) ?? [])
-        codexSessionLinks = codexSessionLinks.filter { live.contains($0.key) }
+        codexSessionLinks = codexSessionLinks.filter { !absentAgentProcesses.contains($0.key) }
         guard !codexSessionLinks.contains(where: { $0.key != process && $0.value == key }) else {
             return "This session is already linked to another terminal."
         }
@@ -196,7 +259,7 @@ final class LiveViewModel: ObservableObject {
         codexSessionLinks.removeValue(forKey: process)
     }
 
-    func refresh() async {
+    func refresh(background: Bool = false) async {
         guard !refreshing else { return }
         refreshing = true
         if needsNewMeasurementWindow {
@@ -204,7 +267,7 @@ final class LiveViewModel: ObservableObject {
             processHistory.reset()
             await sampler.resetMeasurementWindow()
         }
-        let result = await sampler.sample()
+        let result = await sampler.sample(includePorts: !background)
         let previousEventCount = lifecycle.events.count
         lifecycle.observe(result.processes, at: result.date)
         let checks = Set(lifecycle.pendingExitChecks + outcomes.filter(\.signalSent).map { $0.process.id }).subtracting(confirmedExits)
@@ -216,18 +279,22 @@ final class LiveViewModel: ObservableObject {
         confirmedExits.formUnion(gone)
         confirmedExits.formIntersection(Set(lifecycle.pendingExitChecks + outcomes.map { $0.process.id }))
         let elapsed = historyOrigin.duration(to: .now).components
-        processHistory.observe(result.processes, at: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
+        if background { processHistory.reset() }
+        else { processHistory.observe(result.processes, at: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18) }
         snapshot = result
         let liveIdentities = Set(result.processes.map(\.id))
-        agentSignals = agentSignals.filter { liveIdentities.contains($0.key) }
+        // A missing inventory row does not prove exit. Preserve recent hooks
+        // through a transient unreadable sample; exact PID/start-time identity
+        // prevents assigning them to a replacement process.
+        agentSignals = agentSignals.filter { liveIdentities.contains($0.key) || result.date.timeIntervalSince($0.value.observedAt) < 300 }
         sharedCodexSignals = sharedCodexSignals.filter {
-            liveIdentities.contains($0.value.process) &&
-                result.date.timeIntervalSince($0.value.observedAt) < 86_400
+            (liveIdentities.contains($0.value.process) && result.date.timeIntervalSince($0.value.observedAt) < 86_400)
+                || result.date.timeIntervalSince($0.value.observedAt) < 300
         }
-        codexSessionLinks = codexSessionLinks.filter { liveIdentities.contains($0.key) }
+        codexSessionLinks = codexSessionLinks.filter { !absentAgentProcesses.contains($0.key) }
         absentAgentProcesses.formIntersection(liveIdentities)
         selection.formIntersection(Set(result.processes.map(\.id)))
-        if let headroom = result.system.memoryHeadroomRatio, headroom.isFinite, (0...1).contains(headroom) {
+        if !background, let headroom = result.system.memoryHeadroomRatio, headroom.isFinite, (0...1).contains(headroom) {
             memoryHistory.append(MemoryPoint(date: result.date, used: 1 - headroom))
             memoryHistory.removeAll { $0.date < result.date.addingTimeInterval(-300) }
         }
@@ -449,12 +516,22 @@ final class LiveViewModel: ObservableObject {
     }
 
     func checkAgentPresence() async {
+        // A new session's first hook should not wait for a 30-second hidden
+        // inventory tick. Verify its identity before waking the collector.
+        let pending = pendingAgentSignals.values.filter { Date().timeIntervalSince($0.observedAt) < 120 }.map(\.process)
+        if !pending.isEmpty && !paused && review == nil && !performingAction {
+            let observed = await Task.detached(priority: .utility) {
+                pending.contains { ProcessPresence.inspect($0) == .observed }
+            }.value
+            if observed { await refresh(background: !hasVisibleSurface) }
+        }
         _ = rows(for: .agents)
-        let identities = (agentRows ?? []).map(\.id)
+        let identities = Set((agentRows ?? []).map(\.id)).union(codexSessionLinks.keys)
         let gone = await Task.detached(priority: .utility) {
             Set(identities.filter { ProcessPresence.inspect($0) == .gone })
         }.value
         if gone != absentAgentProcesses { absentAgentProcesses = gone }
+        codexSessionLinks = codexSessionLinks.filter { !gone.contains($0.key) }
         // Hook expiry must also redraw while process sampling is paused.
         let activities = Dictionary(agentWallTiles.map { ($0.id, $0.activity) }, uniquingKeysWith: { first, _ in first })
         if activities != lastAgentActivities {
