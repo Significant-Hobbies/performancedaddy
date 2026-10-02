@@ -1,5 +1,27 @@
 # PerformanceDaddy status
 
+## 2026-10-02 — public 0.2.16 build 21
+
+Released [v0.2.16-21](https://github.com/Significant-Hobbies/performancedaddy/releases/tag/v0.2.16-21)
+from `439d06490d3e135942d4decc62fb96c9ddca0ced`. Both CI jobs passed, then the
+protected workflow passed candidate checks, universal Release builds,
+Developer ID signing, launch smoke testing, Apple notarization, stapling,
+signed Sparkle feed validation and live publication checks.
+
+Independent public download: 8,781,025 bytes, SHA-256
+`f1ff1f8a59499220a102d2eebcb4182ee61de55b13d4365568afcd0894766098`.
+The live feed matches the release asset and advertises 0.2.16 build 21.
+The DMG checksum and staple validate; both the DMG and mounted app are accepted
+by Gatekeeper as Notarized Developer ID. The mounted app passes strict
+signature verification, contains arm64 and x86_64, and passes a local launch
+smoke test. Receipts are retained in `artifacts/releases/v0.2.16-21/`.
+
+This ships session reconciliation, the no-scroll wall, bounded artwork and
+visibility-aware monitoring. It does not establish a 10x whole-app RAM gain.
+Native UI automation still fails during pipe startup; live fullscreen/session
+acceptance and a controlled warm-app allocation capture remain open in issue
+#15. The installed build 20 was not replaced.
+
 ## 2026-10-02 — local session, viewport and memory follow-up
 
 Prepared locally under [issue #15](https://github.com/Significant-Hobbies/performancedaddy/issues/15).
