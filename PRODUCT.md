@@ -120,6 +120,14 @@ review. StorageDaddy may ask PerformanceDaddy to verify whether removing or
 disabling a reviewed item changed runtime behavior. Neither product silently
 optimizes the Mac.
 
+Opt-in sustained-load alerts are the one runtime notification. When CPU or
+memory pressure stays above the owner's threshold, a local notification names
+the workload that consistently led, if one did. Its Quit action runs only when
+the owner presses it on a recent alert: apps receive a normal quit request,
+other workloads receive SIGTERM to the exact identities captured at alert time,
+and nothing is force-stopped from a notification. One later sample is reported
+as an observation, not as proof that the quit helped.
+
 For the App access surface, the owner also requested narrow, explicit actions:
 move one user-owned LaunchAgent file to Trash after exact-file review, or reset
 one app's supported macOS privacy decision after exact-app and category review.

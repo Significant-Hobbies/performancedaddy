@@ -78,7 +78,8 @@ public struct ProcessLifecycleJournal: Sendable {
     }
     public mutating func expire(at date: Date) { prune(at: date) }
 
-    public mutating func record(_ process: LiveProcess, at date: Date, force: Bool, signalSent: Bool, observed: [LiveProcess]) {
+    public mutating func record(_ process: LiveProcess, at date: Date, force: Bool, signalSent: Bool, observed: [LiveProcess],
+                                request: String? = nil) {
         guard signalSent, !process.executable.isEmpty, date.timeIntervalSince1970.isFinite else { return }
         prune(at: date)
         watches.removeAll { $0.process.id == process.id }
@@ -86,7 +87,7 @@ public struct ProcessLifecycleJournal: Sendable {
             $0.uid == process.uid && $0.executable == process.executable
         }.prefix(8_192).map(\.id))))
         if watches.count > 100 { watches.removeFirst(watches.count - 100) }
-        append(process, date, "\(force ? "Force-stop" : "Stop") signal sent to PID \(process.id.pid); exit not yet confirmed.")
+        append(process, date, "\(request ?? (force ? "Force-stop signal" : "Stop signal")) sent to PID \(process.id.pid); exit not yet confirmed.")
     }
 
     public mutating func observe(_ processes: [LiveProcess], at date: Date) {

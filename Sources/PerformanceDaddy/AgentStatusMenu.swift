@@ -22,6 +22,8 @@ struct AgentMenuSummary {
 
 struct AgentStatusMenuBarLabel: View {
     @ObservedObject var model: LiveViewModel
+    let alerts: LoadAlertCenter
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let summary = AgentMenuSummary(activities: model.agentWallTiles.map(\.activity))
@@ -31,7 +33,11 @@ struct AgentStatusMenuBarLabel: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(summary.accessibilityLabel)
         .help(summary.accessibilityLabel)
-        .onAppear { model.start() }
+        .onAppear {
+            // The menu bar label lives for the whole session, unlike any window.
+            alerts.attach(to: model) { openWindow(id: "main") }
+            model.start()
+        }
     }
 }
 
@@ -149,6 +155,7 @@ struct AgentStatusMenu: View {
                     Button(model.paused ? "Resume monitoring" : "Pause monitoring") { model.paused.toggle() }
                     Button("Check for Updates…") { updates.check() }
                         .disabled(!updates.canCheck || !updates.isIdle)
+                    SettingsLink { Text("Load Alerts…") }
                     Divider()
                     Button("Quit PerformanceDaddy") { NSApplication.shared.terminate(nil) }
                 } label: {

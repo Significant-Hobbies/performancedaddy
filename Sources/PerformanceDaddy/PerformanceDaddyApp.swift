@@ -12,6 +12,7 @@ struct PerformanceDaddyApp: App {
     @StateObject private var live = LiveViewModel()
     @StateObject private var diagnosis = DiagnosisViewModel()
     @StateObject private var updates = AppUpdates()
+    @StateObject private var alerts = LoadAlertCenter()
     var body: some Scene {
         WindowGroup(id: "main") {
             DashboardView(model: diagnosis, live: live)
@@ -41,9 +42,12 @@ struct PerformanceDaddyApp: App {
             AgentStatusMenu(model: live, updates: updates)
                 .background(MonitoringSurface(model: live))
         } label: {
-            AgentStatusMenuBarLabel(model: live)
+            AgentStatusMenuBarLabel(model: live, alerts: alerts)
         }
         .menuBarExtraStyle(.window)
+        Settings {
+            LoadAlertSettingsView(alerts: alerts)
+        }
     }
 }
 

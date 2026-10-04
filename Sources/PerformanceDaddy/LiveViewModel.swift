@@ -122,6 +122,8 @@ final class LiveViewModel: ObservableObject {
     private var lifecycleLoaded = false
     private var confirmedExits: Set<ProcessIdentity> = []
     private var wakeObserver: NSObjectProtocol?
+    /// Receives each completed live sample, e.g. for sustained-load alerts.
+    var sampleObserver: ((LiveSnapshot) -> Void)?
     private var agentSignalObserver: NSObjectProtocol?
 
     init(lifecycleStore: LifecycleHistoryStore = LifecycleHistoryStore()) {
@@ -300,6 +302,7 @@ final class LiveViewModel: ObservableObject {
         }
         refreshing = false
         if lifecycle.events.count != previousEventCount { persistLifecycle() }
+        sampleObserver?(result)
     }
 
     func rows(for page: LivePage) -> [LiveProcess] {
@@ -610,6 +613,51 @@ final class LiveViewModel: ObservableObject {
         await refresh()
         performingAction = false
     }
+    /// The owner chose Quit on a load alert. Apps receive a normal quit request
+    /// so they can ask to save; other workloads receive SIGTERM over the exact
+    /// identities captured at alert time. Nothing is force-stopped from here.
+    func quitFromLoadAlert(_ contributor: LoadContributor) async -> String {
+        guard !performingAction, review == nil else { return "Another stop is under review. Open PerformanceDaddy to continue." }
+        guard contributor.owner.stopRestriction == nil else { return "\(contributor.name) is protected and was not quit." }
+        performingAction = true
+        let beforeStop = snapshot?.processes ?? []
+        let message: String
+        if let app = runningApplication(for: contributor) {
+            let date = Date()
+            let sent = app.terminate()
+            lifecycle.record(contributor.owner, at: date, force: false, signalSent: sent, observed: beforeStop,
+                             request: "Quit request from a load alert")
+            message = sent ? "Asked \(contributor.name) to quit. It may ask you to save first."
+                : "macOS did not accept the quit request for \(contributor.name)."
+        } else {
+            let results = await Task.detached {
+                ProcessControl.stop(contributor.targets.reversed(), force: false)
+            }.value
+            outcomes = results
+            for outcome in results {
+                guard let date = outcome.signalDate else { continue }
+                lifecycle.record(outcome.process, at: date, force: false, signalSent: outcome.signalSent, observed: beforeStop)
+            }
+            let sent = results.filter(\.signalSent).count
+            message = sent > 0 ? "Stop requested for \(contributor.name) (\(sent) of \(results.count) processes)."
+                : "\(contributor.name) was not stopped: \(results.first?.message ?? "no eligible process")."
+        }
+        persistLifecycle()
+        try? await Task.sleep(for: .seconds(1))
+        performingAction = false
+        await refresh(background: !hasVisibleSurface)
+        return message
+    }
+
+    private func runningApplication(for contributor: LoadContributor) -> NSRunningApplication? {
+        guard let path = contributor.appPath,
+              ProcessPresence.inspect(contributor.owner.id) == .observed,
+              let app = NSRunningApplication(processIdentifier: contributor.owner.id.pid),
+              app.bundleURL?.resolvingSymlinksInPath().path == URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        else { return nil }
+        return app
+    }
+
     func outcomeText(_ result: StopResult) -> String {
         guard result.signalSent else { return result.message }
         if confirmedExits.contains(result.process.id) { return "Exit confirmed; original process identity is gone" }
