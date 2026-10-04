@@ -1,5 +1,29 @@
 # PerformanceDaddy status
 
+## 2026-10-04 — public 0.2.17 build 22
+
+Released [v0.2.17-22](https://github.com/Significant-Hobbies/performancedaddy/releases/tag/v0.2.17-22)
+from `c139fe84ca554bc6c2aeec68e3fc0660481c91ae`. Both CI jobs passed, then the
+protected workflow passed candidate checks, universal Release builds,
+Developer ID signing, Apple notarization, stapling, signed Sparkle feed
+validation and live publication checks.
+
+Independent public download: 8,954,369 bytes, SHA-256
+`a79739c422c16d115c84c3dd6a1fa02cce4b644de2920fe48b20030fe14de08e`.
+The live feed matches the release asset and advertises 0.2.17 build 22.
+The DMG checksum, integrity and staple validate; both the DMG and mounted app
+are accepted by Gatekeeper as Notarized Developer ID. The mounted app passes
+strict signature verification and contains arm64 and x86_64. Receipts are
+retained in `artifacts/releases/v0.2.17-22/`.
+
+This ships opt-in sustained-load alerts: a local notification names the
+workload that consistently led sustained CPU or memory pressure, and Quit runs
+only when the owner presses it (apps get a normal quit request, other
+workloads SIGTERM to captured identities, nothing is force-stopped). Off by
+default. The notification and Quit action were covered by unit tests but not
+exercised on a real Mac; no local launch smoke or native UI run occurred this
+session. The installed build 21 was not replaced.
+
 ## 2026-10-02 — public 0.2.16 build 21
 
 Released [v0.2.16-21](https://github.com/Significant-Hobbies/performancedaddy/releases/tag/v0.2.16-21)
