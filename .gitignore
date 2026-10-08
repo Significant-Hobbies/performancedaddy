@@ -11,3 +11,6 @@ __pycache__/
 site/node_modules/
 site/.wrangler/
 site/public/updates/*.dmg
+
+# Local Wrangler state from running commands at the repository root.
+.wrangler/
