@@ -19,6 +19,28 @@ background activity, listening services and a timeline of locally observed
 system changes. PerformanceDaddy distinguishes correlation from causation and
 uses repeatable experiments when observation alone cannot prove a cause.
 
+## Ownership across the three apps
+
+PerformanceDaddy owns measured Mac and workload diagnosis: CPU, memory pressure,
+thermals, device battery/power, process ancestry, ports, captures and comparable
+follow-up measurements. Agent resource attribution remains part of diagnosis.
+
+Agent Inbox owns live agent/thread status, the segmented agent-status battery,
+attention notifications, conversation linking, replies and individual permission
+requests. Its floating pill is the destination for that battery; no additional
+menu-bar item is required. The battery describes observed agent states, not
+device charge, remaining tokens or provider allowance.
+
+ContextDaddy owns skills/plugins/MCP and instruction/memory scope, persistent
+invocation/access policy, token history, provider allowance and run telemetry.
+An agent consuming tokens and an agent needing a reply are separate facts.
+
+The existing agent wall, status menu/battery and hook setup are temporary
+compatibility surfaces. Keep them working until Agent Inbox proves replacement
+parity, including external-session identity, handoff, notifications and permission
+delivery. Do not expand these workflow surfaces here or remove them on the basis
+of source tests alone. Lifecycle cleanup remains StorageDaddy's responsibility.
+
 ## Product modes
 
 ### Live workloads
@@ -41,7 +63,7 @@ this view. Discard the full prompt after deriving the label; do not read replies
 environment values, command arguments or stored transcripts to populate it.
 Do not equate stored transcript files with live sessions.
 
-The focused Insight Agent Sessions wall uses the same live process families.
+The legacy Insight Agent Sessions wall uses the same live process families.
 Detached hosts without lifecycle evidence remain in the process inventory rather
 than becoming wall tiles. Terminal-attached agents remain visible when their
 status hooks have not been installed.

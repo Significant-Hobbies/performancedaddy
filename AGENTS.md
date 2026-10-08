@@ -14,6 +14,13 @@ boundaries:
   production dependencies unless repository evidence proves they are needed.
 - PerformanceDaddy owns runtime diagnosis. StorageDaddy owns storage and
   configuration cleanup.
+- Agent Inbox owns agent lifecycle/status, attention, conversations, replies and
+  the segmented agent-status battery. Keep this app's wall/menu/hook setup as
+  migration compatibility until replacement parity is verified. Retain measured
+  agent workload attribution and device battery/power diagnosis here.
+- ContextDaddy owns skills/plugins/MCP, context/invocation policy, token history,
+  provider allowance and run telemetry. Do not grow inbox or context-management
+  features in PerformanceDaddy.
 - Use XcodeBuildMCP for build, test, run, logging, and native UI verification.
 - Run focused tests before the full package suite.
 - Do not commit, push, sign, package, publish, or release without explicit
