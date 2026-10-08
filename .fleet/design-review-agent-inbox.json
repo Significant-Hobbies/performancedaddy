@@ -1,0 +1,279 @@
+{
+  "$schema": "fleet.design-review.v2",
+  "version": 2,
+  "project": "performancedaddy",
+  "target": "Local agent attention inbox",
+  "surfaceMode": "operate",
+  "mode": "overhaul",
+  "register": "product",
+  "context": {
+    "product": "PRODUCT.md",
+    "design": "DESIGN.md"
+  },
+  "direction": {
+    "productSurfaces": {
+      "scope": "paired",
+      "landing": "https://performance.daddyrad.com/ (counterpart inspected as text; static continuity concept)",
+      "app": "Native Agent inbox and menu bar; proposed new surface",
+      "reason": ""
+    },
+    "pairedPreview": {
+      "landing": "",
+      "app": ""
+    },
+    "source": "comparison",
+    "references": [
+      "https://getone.one/",
+      "https://learn.chatgpt.com/docs/app-server",
+      "https://code.claude.com/docs/en/channels"
+    ],
+    "probes": [
+      {
+        "id": "a",
+        "name": "Attention desk",
+        "path": "artifacts/design/agent-inbox/direction-a.png",
+        "thesis": "Stable attention-first master-detail queue with request-bound reply controls.",
+        "layout": "Queue beside selected question and evidence.",
+        "typography": "Rounded headline, readable body, monospaced metadata.",
+        "surfaces": {
+          "landing": "artifacts/design/agent-inbox/direction-a.png",
+          "app": "artifacts/design/agent-inbox/direction-a.png"
+        }
+      },
+      {
+        "id": "b",
+        "name": "Menu bar companion",
+        "path": "artifacts/design/agent-inbox/direction-b.png",
+        "thesis": "A compact attention queue over the existing process workbench.",
+        "layout": "Menu-first inline answers; expand long requests.",
+        "typography": "Compact headings and dense readable state rows.",
+        "surfaces": {
+          "landing": "artifacts/design/agent-inbox/direction-b.png",
+          "app": "artifacts/design/agent-inbox/direction-b.png"
+        }
+      },
+      {
+        "id": "c",
+        "name": "Event journal",
+        "path": "artifacts/design/agent-inbox/direction-c.png",
+        "thesis": "Time-first provenance with attention filtering and event-bound replies.",
+        "layout": "Chronological event spine and selected-event detail.",
+        "typography": "Monospaced timestamps with larger provider labels.",
+        "surfaces": {
+          "landing": "artifacts/design/agent-inbox/direction-c.png",
+          "app": "artifacts/design/agent-inbox/direction-c.png"
+        }
+      }
+    ],
+    "selected": "",
+    "approval": "pending",
+    "ownerEvidence": {
+      "path": "",
+      "quote": ""
+    },
+    "supplied": "",
+    "before": "artifacts/releases/v0.2.15-20/installed-agents.png",
+    "library": {
+      "strategy": "upstream-first",
+      "primary": "",
+      "sources": [],
+      "runtime": "none",
+      "customReplacement": {
+        "used": false,
+        "authorization": "not-required",
+        "reason": ""
+      }
+    },
+    "contract": {
+      "purpose": "PerformanceDaddy helps developers inspect local processes, ports and measured slowdown signals before taking action.",
+      "purposeSource": "PRODUCT.md; saas-maker/catalog/projects.json PerformanceDaddy purposeContract",
+      "canonicalPurpose": "PerformanceDaddy helps developers inspect local processes, ports and measured slowdown signals before taking action.",
+      "purposeAlignment": "match",
+      "driftNote": "",
+      "audience": "Developers running multiple local coding agents.",
+      "job": "Notice an agent requiring attention and reply to an exact connected pending request.",
+      "thesis": "Pending owner selection; three local attention workflows preserve Daddy identity.",
+      "system": "DESIGN.md native black/mint system; layout and interaction options in artifacts/design/agent-inbox/brief.md",
+      "signature": "Request-bound reply controls preserve provider/session and lifecycle evidence.",
+      "risk": "Replies require a separately connected provider session; hook-only sessions cannot receive them.",
+      "qualityBar": "Visible attention hierarchy, readable request details, exact routing, honest delivery states, keyboard access and native minimum-width behavior."
+    }
+  },
+  "evidence": {
+    "platform": "native-macos",
+    "productContinuity": {
+      "status": "blocked",
+      "reason": "Current web render unavailable: iab and chrome computer-use providers unavailable; public text inspected. Static paired concepts do not establish rendered continuity or install handoff.",
+      "reviewer": "",
+      "report": "artifacts/design/product-continuity.md",
+      "surfaces": {
+        "landing": "artifacts/design/landing.png",
+        "app": "artifacts/design/app.png"
+      },
+      "checks": {
+        "designSystem": {
+          "status": "pending",
+          "observation": ""
+        },
+        "identity": {
+          "status": "pending",
+          "observation": ""
+        },
+        "vocabulary": {
+          "status": "pending",
+          "observation": ""
+        },
+        "productTruth": {
+          "status": "pending",
+          "observation": ""
+        },
+        "handoff": {
+          "status": "pending",
+          "observation": ""
+        }
+      }
+    },
+    "slopScale": {
+      "platform": "native",
+      "posture": "advisory",
+      "reason": "Native macOS windows require native rendered review; the browser slop scanner cannot inspect them.",
+      "checkpoints": [
+        {
+          "stage": "directions",
+          "direction": "a",
+          "status": "blocked",
+          "report": "artifacts/design/agent-inbox/brief.md",
+          "reason": "Static native UI and landing continuity concept; browser scoring cannot inspect these PNGs. Score unknown.",
+          "findingsReview": "Distinct composition; synthetic events and connection capabilities labelled. See direction review in brief."
+        },
+        {
+          "stage": "directions",
+          "direction": "b",
+          "status": "blocked",
+          "report": "artifacts/design/agent-inbox/brief.md",
+          "reason": "Static native UI and landing continuity concept; browser scoring cannot inspect these PNGs. Score unknown.",
+          "findingsReview": "Distinct composition; synthetic events and connection capabilities labelled. See direction review in brief."
+        },
+        {
+          "stage": "directions",
+          "direction": "c",
+          "status": "blocked",
+          "report": "artifacts/design/agent-inbox/brief.md",
+          "reason": "Static native UI and landing continuity concept; browser scoring cannot inspect these PNGs. Score unknown.",
+          "findingsReview": "Distinct composition; synthetic events and connection capabilities labelled. See direction review in brief."
+        }
+      ]
+    },
+    "visualReview": {
+      "status": "pending",
+      "reviewer": "",
+      "direction": "",
+      "report": "artifacts/design/review.md",
+      "checks": {
+        "hierarchy": {
+          "status": "pending",
+          "observation": ""
+        },
+        "typography": {
+          "status": "pending",
+          "observation": ""
+        },
+        "composition": {
+          "status": "pending",
+          "observation": ""
+        },
+        "identity": {
+          "status": "pending",
+          "observation": ""
+        },
+        "interaction": {
+          "status": "pending",
+          "observation": ""
+        },
+        "responsive": {
+          "status": "pending",
+          "observation": ""
+        }
+      }
+    },
+    "screenshots": [
+      {
+        "width": 980,
+        "height": null,
+        "path": "artifacts/design/after-native-0.png"
+      },
+      {
+        "width": 1180,
+        "height": null,
+        "path": "artifacts/design/after-native-200.png"
+      },
+      {
+        "width": 1380,
+        "height": null,
+        "path": "artifacts/design/after-native-400.png"
+      }
+    ],
+    "projectCheck": {
+      "command": "replace-with-project-check",
+      "status": "pending"
+    },
+    "critique": {
+      "score": 0,
+      "maximum": 40,
+      "dimensions": {
+        "hierarchy": 0,
+        "typography": 0,
+        "composition": 0,
+        "identity": 0,
+        "interaction": 0,
+        "responsive": 0
+      }
+    },
+    "audit": {
+      "score": 0,
+      "maximum": 20,
+      "dimensions": {
+        "purpose": 0,
+        "accessibility": 0,
+        "behavior": 0,
+        "responsive": 0,
+        "performance": 0
+      }
+    },
+    "unresolved": {
+      "p0": 0,
+      "p1": 0
+    },
+    "detector": {
+      "posture": "advisory",
+      "findings": []
+    },
+    "comprehension": {
+      "status": "not-applicable",
+      "reviewer": "",
+      "answers": {
+        "product": "",
+        "audience": "",
+        "value": "",
+        "mechanism": "",
+        "proof": "",
+        "nextAction": ""
+      },
+      "purposeScore": {
+        "product": 0,
+        "audience": 0,
+        "value": 0,
+        "mechanism": 0,
+        "proof": 0,
+        "nextAction": 0,
+        "total": 0
+      },
+      "mismatches": []
+    },
+    "supportedMinimumWidth": 980
+  },
+  "ownerFeedback": {
+    "decision": "pending",
+    "note": "Owner requested local inbox, notifications and replies. Scope confirmed; design selection pending. Recommended A."
+  }
+}
