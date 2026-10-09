@@ -27,9 +27,7 @@ struct PerformanceDaddyApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
-                Button("Check for Updates…") { updates.check() }
-                    .disabled(!updates.canCheck || !updates.isIdle)
-                Toggle("Automatically Check for Updates", isOn: $updates.automaticallyChecks)
+                DaddyUpdateMenu(updates: updates)
             }
         }
         WindowGroup(id: "agent-wall") {

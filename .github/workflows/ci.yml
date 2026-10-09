@@ -14,6 +14,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+      - run: python3 scripts/check-daddy-foundation.py --app performancedaddy
       - run: swift test
       - run: swift build -c release
       - run: python3 -m unittest test_sparkle_support
@@ -22,7 +23,7 @@ jobs:
         working-directory: site
 
   shared_candidate:
-    uses: sass-maker/saas-maker/.github/workflows/daddy-macos-candidate.yml@69af94896a7d56dcaf2be8c5ae30cab0e2bff38f
+    uses: sass-maker/saas-maker/.github/workflows/daddy-macos-candidate.yml@67dcb59d289c396349244f42778dccbd2953ba41
     with:
       app: performancedaddy
-      tooling-ref: 69af94896a7d56dcaf2be8c5ae30cab0e2bff38f
+      tooling-ref: 67dcb59d289c396349244f42778dccbd2953ba41
