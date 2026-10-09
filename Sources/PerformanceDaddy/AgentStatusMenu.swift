@@ -88,7 +88,9 @@ private enum AgentStatusMark {
 
 struct AgentStatusMenu: View {
     @ObservedObject var model: LiveViewModel
+    @ObservedObject var diagnosis: DiagnosisViewModel
     @ObservedObject var updates: AppUpdates
+    @ObservedObject var login: DaddyLaunchAtLogin
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -157,7 +159,10 @@ struct AgentStatusMenu: View {
                         .disabled(!updates.canCheck || !updates.isIdle)
                     SettingsLink { Text("Load Alerts…") }
                     Divider()
-                    Button("Quit PerformanceDaddy") { NSApplication.shared.terminate(nil) }
+                    DaddyLaunchAtLoginToggle(login: login)
+                    DaddyCompletionNoticeToggle(title: "Notify When Diagnosis Finishes")
+                    Divider()
+                    DaddyMenuQuitButton(appName: "PerformanceDaddy")
                 } label: {
                     Image(systemName: "ellipsis")
                         .frame(width: 24, height: 24)
@@ -168,6 +173,8 @@ struct AgentStatusMenu: View {
             }
             .padding(.top, 15)
             VStack(alignment: .leading, spacing: 3) {
+                Text(diagnosis.menuStatus)
+                    .accessibilityLabel("Diagnosis status: \(diagnosis.menuStatus)")
                 Text("RAM estimate \(model.usedMemory) · Pressure \(model.snapshot?.pressure ?? "Measuring")")
                 Text(model.snapshot?.portsDate == .distantPast
                      ? "Sockets awaiting refresh · \(model.agentCount) detected agent sessions"
