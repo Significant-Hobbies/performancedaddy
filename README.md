@@ -163,6 +163,12 @@ thirty seconds at the default cadence. Initial and manual refreshes remain
 immediate. Pause freezes the display. Collection reads process metadata, not
 prompts, transcripts, environment variables or command arguments.
 
+Closing the window keeps PerformanceDaddy in the menu bar. Its **⋯** menu
+offers opt-in **Launch at Login** and **Notify When Diagnosis Finishes**; the
+notice appears only when a recording finishes with no PerformanceDaddy window
+open. Quitting during a diagnosis recording or a reviewed stop action asks
+before interrupting it.
+
 ## Run locally
 
 ```bash

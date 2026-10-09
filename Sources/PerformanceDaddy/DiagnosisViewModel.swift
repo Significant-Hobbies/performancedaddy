@@ -54,6 +54,16 @@ final class DiagnosisViewModel: ObservableObject {
         }
     }
 
+    /// Menu wording keeps never-run, running, failed and finished states distinct.
+    var menuStatus: String {
+        if isRecording { return "Recording diagnosis · \(Int(progress * 100))%" }
+        if errorMessage != nil { return "Last diagnosis needs attention" }
+        if let report {
+            return "Last diagnosis \(report.capture.endedAt.formatted(date: .abbreviated, time: .shortened))"
+        }
+        return "No diagnosis recorded yet"
+    }
+
     func loadHistory() async {
         guard !historyLoaded else { return }
         historyLoaded = true
@@ -108,6 +118,10 @@ final class DiagnosisViewModel: ObservableObject {
                 if let baseline {
                     comparison = engine.compare(before: baseline, after: nextReport)
                 }
+                DaddyCompletionNotices.postIfWindowHidden(
+                    title: "Performance diagnosis complete",
+                    body: "Open PerformanceDaddy to review the report."
+                )
             } catch is CancellationError {
                 errorMessage = "The recording was cancelled. No changes were made."
                 report = previousReport
