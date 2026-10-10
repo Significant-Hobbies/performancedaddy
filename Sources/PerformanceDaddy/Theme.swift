@@ -1,4 +1,5 @@
 import SwiftUI
+import SaaSMakerUI
 
 enum PerformanceTheme {
     // Daddy series: exact StorageDaddy Tints and app-owned black surfaces.
@@ -15,6 +16,28 @@ enum PerformanceTheme {
     static let cyan = DaddyPalette.cyan
     static let amber = DaddyPalette.amber
     static let divider = secondaryInk.opacity(0.18)
+
+    /// Library roles with Daddy surfaces and measured-evidence semantics.
+    static let palette: SMPalette = {
+        var palette = SMPalette.ink.brand(
+            Color(.sRGB, red: 107 / 255, green: 201 / 255, blue: 158 / 255, opacity: 1),
+            foreground: .black)
+        palette.background = fog
+        palette.surface = surface
+        palette.card = surface
+        palette.foreground = ink
+        palette.mutedForeground = secondaryInk
+        palette.border = divider
+        palette.hairline = divider
+        palette.success = mintInk
+        palette.warning = amber
+        palette.destructive = coral
+        palette.accent = mintInk.opacity(0.11)
+        palette.radius = 8
+        palette.displayWeight = 600
+        palette.displayTracking = -0.025
+        return palette
+    }()
 }
 
 /// Shared Daddy-series control pattern, copied from StorageButtonStyle.

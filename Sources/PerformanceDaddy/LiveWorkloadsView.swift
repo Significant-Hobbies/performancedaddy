@@ -2,6 +2,7 @@ import AppKit
 import Charts
 import PerformanceCore
 import SwiftUI
+import SaaSMakerUI
 
 struct LiveWorkloadsView: View {
     @Environment(\.openWindow) private var openWindow
@@ -25,7 +26,7 @@ struct LiveWorkloadsView: View {
                 ProgressView("Reading local processes and listeners…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HSplitView {
-                    processTable.frame(minWidth: 440, minHeight: 0, maxHeight: .infinity)
+                    processTable.frame(minWidth: min(440, max(300, geometry.size.width - 320)), minHeight: 0, maxHeight: .infinity)
                     if let selected = model.rows(for: page).first(where: { model.selection.contains($0.id) }) ?? model.selected {
                         inspector(selected).frame(minWidth: 260, idealWidth: 320, maxWidth: 390)
                     }
@@ -50,17 +51,31 @@ struct LiveWorkloadsView: View {
     }
 
     private var header: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top) { heading; headerActions }
+            VStack(alignment: .leading, spacing: 12) {
+                heading
+                HStack { headerActions }
+            }
+        }
+    }
+
+    private var heading: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(page.rawValue).font(.largeTitle.weight(.semibold)).accessibilityAddTraits(.isHeader)
+                SMSectionHeader(page.rawValue, size: 30).accessibilityLabel(page.rawValue).accessibilityAddTraits(.isHeader)
                 Text(page.subtitle).foregroundStyle(PerformanceTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
             }
             DaddyArtwork(topic: page == .agents ? 8 : 5).frame(width: 72, height: 72)
             Spacer()
+        }
+    }
+
+    @ViewBuilder private var headerActions: some View {
             if page == .agents {
-                Button("Insight Agent Sessions") { openWindow(id: "agent-wall") }
+                Button("insight agent sessions") { openWindow(id: "agent-wall") }.accessibilityLabel("Insight Agent Sessions")
                     .visibleHelp("Open the focused agent activity wall")
-                Button("Set up statuses…") { showingAgentHookSetup = true }
+                Button("set up statuses…") { showingAgentHookSetup = true }.accessibilityLabel("Set up statuses…")
                     .visibleHelp("Copy local lifecycle hooks for Codex, Claude or Devin")
             }
             Button { showingHelp = true } label: { Image(systemName: "questionmark.circle") }
@@ -76,13 +91,13 @@ struct LiveWorkloadsView: View {
                 .accessibilityLabel("Export redacted snapshot")
                 .visibleHelp("Save a local JSON snapshot without names, paths, raw PIDs or bind addresses")
             Button { model.paused.toggle() } label: {
-                Label(model.paused ? "Resume" : "Pause", systemImage: model.paused ? "play.fill" : "pause.fill")
+                Label(model.paused ? "resume" : "pause", systemImage: model.paused ? "play.fill" : "pause.fill")
+                    .accessibilityLabel(model.paused ? "Resume" : "Pause")
             }.visibleHelp(model.paused ? "Resume live process updates" : "Pause live updates to inspect a stable snapshot")
             Button { Task { await model.refresh() } } label: { Image(systemName: "arrow.clockwise") }
                 .disabled(model.refreshing || model.performingAction)
                 .accessibilityLabel("Refresh processes")
                 .visibleHelp("Refresh processes now. Socket scans are spaced at least thirty seconds apart.")
-        }
     }
 
     private var metrics: some View {
@@ -124,22 +139,24 @@ struct LiveWorkloadsView: View {
     }
 
     private var memoryChart: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("RAM over the last five minutes").font(.headline)
-                Spacer()
-                Text("Compressed: \(model.snapshot?.compressed.map(LiveViewModel.bytes) ?? "—")").foregroundStyle(.secondary)
+        SMCard(padding: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    SMDisplay("RAM over the last five minutes", size: 17).accessibilityLabel("RAM over the last five minutes")
+                    Spacer()
+                    Text("Compressed: \(model.snapshot?.compressed.map(LiveViewModel.bytes) ?? "—")").foregroundStyle(.secondary)
+                }
+                Chart(model.memoryHistory) { point in
+                    AreaMark(x: .value("Time", point.date), y: .value("Used", point.used * 100))
+                        .foregroundStyle(PerformanceTheme.action.opacity(0.10))
+                    LineMark(x: .value("Time", point.date), y: .value("Used", point.used * 100))
+                        .foregroundStyle(PerformanceTheme.action)
+                }.chartYScale(domain: 0...100).frame(height: 110)
+                    .accessibilityLabel("Estimated RAM usage history, percentage of physical memory")
+                Text("RAM estimate excludes free and inactive pages. Resident process totals include shared memory; they do not add up to system RAM.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            Chart(model.memoryHistory) { point in
-                AreaMark(x: .value("Time", point.date), y: .value("Used", point.used * 100))
-                    .foregroundStyle(PerformanceTheme.action.opacity(0.10))
-                LineMark(x: .value("Time", point.date), y: .value("Used", point.used * 100))
-                    .foregroundStyle(PerformanceTheme.action)
-            }.chartYScale(domain: 0...100).frame(height: 110)
-                .accessibilityLabel("Estimated RAM usage history, percentage of physical memory")
-            Text("RAM estimate excludes free and inactive pages. Resident process totals include shared memory; they do not add up to system RAM.")
-                .font(.caption).foregroundStyle(.secondary)
-        }.padding(16).background(PerformanceTheme.surface, in: RoundedRectangle(cornerRadius: 12))
+        }
     }
 
     private var controls: some View {
@@ -164,20 +181,21 @@ struct LiveWorkloadsView: View {
             .background(Color.black, in: RoundedRectangle(cornerRadius: 7))
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(PerformanceTheme.mintInk.opacity(0.35)))
             .background {
-                Button("Find process") { searchFocused = true }.keyboardShortcut("f", modifiers: .command).hidden()
+                Button("find process") { searchFocused = true }.accessibilityLabel("Find process").keyboardShortcut("f", modifiers: .command).hidden()
             }
     }
     @ViewBuilder private var actions: some View {
-        Toggle("Include system", isOn: $model.includeSystem).toggleStyle(.checkbox)
+        Toggle("include system", isOn: $model.includeSystem).toggleStyle(.checkbox)
+            .accessibilityLabel("Include system")
             .help("Include system and other-user processes when macOS allows inspection")
         if page == .workloads || page == .memory {
-            Menu("Group · \(model.grouping.rawValue)") {
+            Menu("group · \(model.grouping.rawValue.lowercased())") {
                 ForEach(LiveViewModel.ProcessGrouping.allCases) { mode in
                     Button { model.grouping = mode } label: {
                         if model.grouping == mode {
-                            Label(mode.rawValue, systemImage: "checkmark")
+                            Label(mode.rawValue.lowercased(), systemImage: "checkmark").accessibilityLabel(mode.rawValue)
                         } else {
-                            Text(mode.rawValue)
+                            Text(mode.rawValue.lowercased()).accessibilityLabel(mode.rawValue)
                         }
                     }
                 }
@@ -191,7 +209,7 @@ struct LiveWorkloadsView: View {
             .accessibilityValue(model.grouping.rawValue)
             .help("Group rows by kind, owning app or service category. App and agent groups are evidence hints, not verified ownership.")
         }
-        Menu("Stop…") {
+        Menu("stop…") {
             Button("Selected processes (\(model.selection.count))…") { model.prepareSelected() }
                 .disabled(model.selection.isEmpty)
             Button("All matching \(page == .ports ? "listeners" : "processes") (\(model.rows(for: page).filter { $0.stopRestriction == nil }.count))…") {
@@ -199,10 +217,10 @@ struct LiveWorkloadsView: View {
             }
             if page == .agents {
                 Divider()
-                Button("All shown agent families…") { model.prepareFamilies(model.rows(for: page)) }
+                Button("all shown agent families…") { model.prepareFamilies(model.rows(for: page)) }.accessibilityLabel("All shown agent families…")
                     .disabled(model.rows(for: page).isEmpty)
             }
-        }.menuStyle(.borderlessButton)
+        }.accessibilityLabel("Stop…").menuStyle(.borderlessButton)
             .padding(.horizontal, 11).padding(.vertical, 7)
             .foregroundStyle(PerformanceTheme.mintInk)
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(PerformanceTheme.mintInk.opacity(0.35)))
@@ -219,12 +237,12 @@ struct LiveWorkloadsView: View {
                 Color.clear.frame(width: 28, height: 1)
                 sortHeader("PROCESS", key: \.sortName, alignment: .leading)
                 if page != .ports {
-                    sortHeader("RUNNING", key: \.sortRunning, initial: .reverse).frame(width: 76)
+                    sortHeader("RUNNING", key: \.sortRunning, initial: .reverse).frame(width: 64)
                     sortHeader("CPU", key: \.sortCPU, initial: .reverse).frame(width: 54)
                 }
                 sortHeader("RAM", key: \.memory, initial: .reverse).frame(width: 72)
                 if page != .ports {
-                    sortHeader("PORTS", key: \.sortPort, alignment: .leading).frame(width: 96)
+                    sortHeader("PORTS", key: \.sortPort, alignment: .leading).frame(width: 72)
                 }
             }.padding(.horizontal, 4).zIndex(10)
             Rectangle().fill(PerformanceTheme.divider).frame(height: 1)
@@ -247,6 +265,7 @@ struct LiveWorkloadsView: View {
                 }.listStyle(.plain).scrollContentBackground(.hidden).background(Color.black)
             }
         }
+        .font(.custom(PerformanceTheme.palette.sansFont, size: 13))
         .overlay {
             if model.rows(for: page).isEmpty {
                 ContentUnavailableView {
@@ -254,7 +273,7 @@ struct LiveWorkloadsView: View {
                 } description: {
                     Text(page == .agents ? "Known local agent sessions appear here, including idle ones. Nested agent tools stay in the owning workload and process list." : model.includeSystem ? "Try another name, app, role or port. Inspection can be limited by macOS permissions." : "Try another name, app, role or port, or include system processes.")
                 } actions: {
-                    if !model.search.isEmpty { Button("Clear search") { model.search = "" } }
+                    if !model.search.isEmpty { Button("clear search") { model.search = "" }.accessibilityLabel("Clear search") }
                 }
             }
         }
@@ -269,12 +288,12 @@ struct LiveWorkloadsView: View {
             if page == .ports { prominentPorts(process) }
             ProcessIcon(process: process)
             VStack(alignment: .leading, spacing: 3) {
-                Text(process.sortName).fontWeight(.medium).lineLimit(1)
+                Text(process.sortName).fontWeight(.medium).lineLimit(2)
                 Text(model.processSubtitle(process))
-                    .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk).lineLimit(1)
+                    .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk).lineLimit(2)
             }.frame(maxWidth: .infinity, alignment: .leading).help(process.executable)
             if page != .ports {
-            Text(uptime(process)).monospacedDigit().frame(width: 76, alignment: .trailing)
+            Text(uptime(process)).monospacedDigit().frame(width: 64, alignment: .trailing)
                 .accessibilityLabel("Running for \(uptime(process))")
             Text(process.cpu.map { String(format: "%.1f%%", $0) } ?? "—").monospacedDigit()
                 .accessibilityLabel(process.cpu.map { String(format: "CPU %.1f percent", $0) } ?? "CPU not yet measured")
@@ -288,29 +307,29 @@ struct LiveWorkloadsView: View {
             Text(process.ports.isEmpty ? (process.portsIncomplete ? "Unknown" : "—") : process.portLabel)
                 .accessibilityLabel(process.ports.isEmpty ? (process.portsIncomplete ? "Ports unavailable" : "No observed ports") : "Ports \(process.portLabel)")
                 .monospacedDigit().foregroundStyle(process.ports.isEmpty ? PerformanceTheme.secondaryInk : PerformanceTheme.cyan)
-                .lineLimit(2).frame(width: 96, alignment: .leading)
+                .lineLimit(2).frame(width: 72, alignment: .leading)
                 .help(process.ports.map { "\($0.transport) \($0.endpoint)" }.joined(separator: "\n"))
             }
         }.padding(.vertical, 6).tag(process.id)
             .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
             .listRowBackground(model.selection.contains(process.id) ? PerformanceTheme.mintInk.opacity(0.1) : Color.black)
             .contextMenu {
-                Button("Copy PID") { copy(String(process.id.pid)) }
+                Button("copy pid") { copy(String(process.id.pid)) }.accessibilityLabel("Copy PID")
                 if !process.directory.isEmpty {
-                    Button("Copy project path") { copy(process.directory) }
-                    Button("Open project folder") { NSWorkspace.shared.open(URL(fileURLWithPath: process.directory)) }
+                    Button("copy project path") { copy(process.directory) }.accessibilityLabel("Copy project path")
+                    Button("open project folder") { NSWorkspace.shared.open(URL(fileURLWithPath: process.directory)) }.accessibilityLabel("Open project folder")
                 }
                 if !process.executable.isEmpty {
-                    Button("Reveal executable in Finder") {
+                    Button("reveal executable in finder") {
                         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: process.executable)])
-                    }
+                    }.accessibilityLabel("Reveal executable in Finder")
                 }
                 if !process.ports.isEmpty {
-                    Button("Copy endpoints") { copy(process.ports.map { "\($0.transport) \($0.endpoint)" }.joined(separator: "\n")) }
+                    Button("copy endpoints") { copy(process.ports.map { "\($0.transport) \($0.endpoint)" }.joined(separator: "\n")) }.accessibilityLabel("Copy endpoints")
                 }
                 Divider()
-                Button("Stop this process…") { model.prepare([process]) }.disabled(process.stopRestriction != nil)
-                Button("Review family stop…") { model.prepareTree(process) }
+                Button("stop this process…") { model.prepare([process]) }.accessibilityLabel("Stop this process…").disabled(process.stopRestriction != nil)
+                Button("review family stop…") { model.prepareTree(process) }.accessibilityLabel("Review family stop…")
                     .disabled(model.family(of: process).allSatisfy { $0.stopRestriction != nil })
             }
     }
@@ -356,7 +375,7 @@ struct LiveWorkloadsView: View {
             model.sortOrder = [KeyPathComparator(key, order: order)]
         } label: {
             HStack(spacing: 4) {
-                Text(title)
+                Text(title.lowercased())
                 Image(systemName: active && ascending ? "chevron.up" : "chevron.down")
                     .font(.system(size: 8, weight: .bold)).opacity(active ? 1 : 0)
             }.frame(maxWidth: .infinity, minHeight: 28, alignment: alignment).contentShape(Rectangle())
@@ -396,7 +415,7 @@ struct LiveWorkloadsView: View {
                         Text("RAM: \(LiveViewModel.bytes(process.memory))")
                         if !process.directory.isEmpty {
                             Text(process.directory).font(.caption).textSelection(.enabled)
-                            Button("Open project folder") { NSWorkspace.shared.open(URL(fileURLWithPath: process.directory)) }
+                            Button("open project folder") { NSWorkspace.shared.open(URL(fileURLWithPath: process.directory)) }.accessibilityLabel("Open project folder")
                         }
                         Text(process.executable.isEmpty ? "Executable unavailable" : process.executable)
                             .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
@@ -470,8 +489,8 @@ struct LiveWorkloadsView: View {
                     Text(reason).font(.caption).foregroundStyle(.secondary)
                 } else {
                     HStack {
-                        Button("Stop process…") { model.prepare([process]) }
-                        if tree.count > 1 { Button("Stop family…") { model.prepareTree(process) } }
+                        Button("stop process…") { model.prepare([process]) }.accessibilityLabel("Stop process…")
+                        if tree.count > 1 { Button("stop family…") { model.prepareTree(process) }.accessibilityLabel("Stop family…") }
                     }
                 }
                 Text("100% CPU represents one logical core. Session rows identify running agent processes, not conversation contents or whether an agent is waiting for input.")
@@ -495,7 +514,7 @@ struct LiveWorkloadsView: View {
             if let notice = model.exportNotice {
                 HStack {
                     Text(notice)
-                    Button("Dismiss") { model.exportNotice = nil }.buttonStyle(.plain)
+                    Button("dismiss") { model.exportNotice = nil }.accessibilityLabel("Dismiss").buttonStyle(.plain)
                 }
             }
             if !model.outcomes.isEmpty {
@@ -563,7 +582,7 @@ private struct StopReviewView: View {
                 .font(.callout).foregroundStyle(.secondary)
             HStack {
                 Spacer()
-                Button("Cancel") { model.review = nil }.keyboardShortcut(.cancelAction)
+                Button("cancel") { model.review = nil }.accessibilityLabel("Cancel").keyboardShortcut(.cancelAction)
                 Button(force ? "Force stop \(review.targets.count)" : "Stop \(review.targets.count)", role: .destructive) {
                     Task { await model.confirmStop(force: force) }
                 }
@@ -593,7 +612,7 @@ private struct DaddyDetailSection<Content: View>: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).tracking(1)
+            SMDisplay(title, size: 10).accessibilityLabel(title.uppercased())
                 .foregroundStyle(PerformanceTheme.secondaryInk)
                 .accessibilityAddTraits(.isHeader)
             content()

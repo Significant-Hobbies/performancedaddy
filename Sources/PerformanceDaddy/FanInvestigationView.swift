@@ -1,5 +1,6 @@
 import PerformanceCore
 import SwiftUI
+import SaaSMakerUI
 
 struct FanInvestigationView: View {
     @ObservedObject var model: DiagnosisViewModel
@@ -7,7 +8,7 @@ struct FanInvestigationView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text("FANS & HEAT").font(.caption.weight(.semibold)).tracking(1.5)
+                SMEyebrow("fans & heat").accessibilityLabel("FANS & HEAT")
                     .foregroundStyle(PerformanceTheme.secondaryInk)
                 if model.isRecording {
                     recording
@@ -38,7 +39,7 @@ struct FanInvestigationView: View {
         VStack(alignment: .leading, spacing: 22) {
             Image(systemName: "fan").font(.system(size: 42)).foregroundStyle(PerformanceTheme.mintInk)
                 .accessibilityHidden(true)
-            Text("Why is your fan running?").font(.system(size: 34, weight: .semibold))
+            SMSectionHeader("Why is your fan running?", size: 34).accessibilityLabel("Why is your fan running?")
                 .accessibilityAddTraits(.isHeader)
             Text("Record while the fan is loud. We’ll look for sustained CPU work, app and agent contributors, thermal pressure and macOS power constraints.")
                 .foregroundStyle(PerformanceTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
@@ -48,7 +49,8 @@ struct FanInvestigationView: View {
                     Text(length.rawValue).tag(length)
                 }
             }.pickerStyle(.segmented).frame(maxWidth: 260)
-            Button("Record \(model.selectedLength.rawValue) fan check", action: model.recordFanCheck)
+            Button("record \(model.selectedLength.rawValue) fan check", action: model.recordFanCheck)
+                .accessibilityLabel("Record \(model.selectedLength.rawValue) fan check")
                 .buttonStyle(DaddyButtonStyle(prominent: true))
             Text("Local and read-only. Nothing stops automatically. Two minutes gives more context than a quick check.")
                 .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
@@ -57,13 +59,13 @@ struct FanInvestigationView: View {
 
     private var recording: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("Watching possible heat contributors")
-                .font(.largeTitle.weight(.semibold)).accessibilityAddTraits(.isHeader)
+            SMSectionHeader("Watching possible heat contributors", size: 34).accessibilityLabel("Watching possible heat contributors")
+                .accessibilityAddTraits(.isHeader)
             ProgressView(value: model.progress).accessibilityLabel("Fan check progress")
             Text("\(model.progress.formatted(.percent.precision(.fractionLength(0)))) · Recording CPU, process activity, thermal state and available power constraints.")
                 .foregroundStyle(PerformanceTheme.secondaryInk)
             coverage
-            Button("Cancel recording", action: model.cancelRecording)
+            Button("cancel recording", action: model.cancelRecording).accessibilityLabel("Cancel recording")
             Text("You can keep using your Mac. No changes are being made.")
                 .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
         }
@@ -77,15 +79,14 @@ struct FanInvestigationView: View {
                 Label("Preview evidence — no live machine data", systemImage: "sparkles")
                     .foregroundStyle(PerformanceTheme.mintInk)
             }
-            Text(finding.headline).font(.system(size: 32, weight: .semibold))
+            Text(finding.headline).font(.custom(PerformanceTheme.palette.displayFont, size: 32).weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
-            Text("\(finding.confidence.rawValue) · Fan cause unproven")
-                .font(.callout).foregroundStyle(PerformanceTheme.amber)
+            SMStatusPill("\(finding.confidence.rawValue) · Fan cause unproven", tone: .warning)
             Text("Recorded \(report.capture.startedAt.formatted(date: .abbreviated, time: .standard)) – \(report.capture.endedAt.formatted(date: .omitted, time: .standard)) · \(duration) seconds · saved recording")
                 .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
 
             band("NOW") {
-                Text("During this recording").font(.title2.weight(.semibold))
+                SMDisplay("During this recording", size: 22).accessibilityLabel("During this recording")
                 evidenceRow("Average CPU", cores(finding.averageCPUCores))
                 evidenceRow("Peak CPU", cores(finding.peakCPUCores))
                 evidenceRow("CPU trend", finding.cpuTrend.rawValue)
@@ -101,7 +102,7 @@ struct FanInvestigationView: View {
                     Text("No positive readable process CPU rows identified a contributor. Missing rows do not prove idle.")
                         .foregroundStyle(PerformanceTheme.secondaryInk)
                 } else {
-                    Text("Apps and workloads contributing CPU").font(.headline)
+                    SMDisplay("Apps and workloads contributing CPU", size: 17).accessibilityLabel("Apps and workloads contributing CPU")
                     ForEach(Array(finding.contributors.prefix(5)), id: \.id) { contributor in
                         HStack(alignment: .firstTextBaseline) {
                             VStack(alignment: .leading, spacing: 3) {
@@ -120,9 +121,10 @@ struct FanInvestigationView: View {
                 }
             }
             band("NEXT") {
-                Text("Listen and compare").font(.title2.weight(.semibold))
+                SMDisplay("Listen and compare", size: 22).accessibilityLabel("Listen and compare")
                 Text(finding.nextCheck).fixedSize(horizontal: false, vertical: true)
-                Button("Record another \(report.capture.duration >= 60 ? "2 min" : "15 sec") check", action: model.recordFanCheck)
+                Button("record another \(report.capture.duration >= 60 ? "2 min" : "15 sec") check", action: model.recordFanCheck)
+                    .accessibilityLabel("Record another \(report.capture.duration >= 60 ? "2 min" : "15 sec") check")
                     .buttonStyle(DaddyButtonStyle(prominent: true))
                 if let baseline = model.baselineReport, let comparison = model.comparison {
                     Text("Compared with \(baseline.capture.startedAt.formatted(date: .omitted, time: .standard))")
@@ -144,7 +146,7 @@ struct FanInvestigationView: View {
                     Text(finding.limitations)
                 }.font(.callout).foregroundStyle(PerformanceTheme.secondaryInk).padding(.top, 12)
             }
-            Button("Set up a new check", action: model.clearReport)
+            Button("set up a new check", action: model.clearReport).accessibilityLabel("Set up a new check")
         }
     }
 
@@ -166,11 +168,12 @@ struct FanInvestigationView: View {
     }
 
     private func band<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Divider()
-            Text(label).font(.caption.weight(.semibold)).tracking(1.5)
-                .foregroundStyle(PerformanceTheme.secondaryInk).accessibilityAddTraits(.isHeader)
-            content()
+        SMCard(padding: 18) {
+            VStack(alignment: .leading, spacing: 14) {
+                SMEyebrow(label.lowercased()).accessibilityLabel(label)
+                    .foregroundStyle(PerformanceTheme.secondaryInk).accessibilityAddTraits(.isHeader)
+                content()
+            }
         }
     }
 

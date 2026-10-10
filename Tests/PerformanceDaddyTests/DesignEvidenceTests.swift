@@ -1,6 +1,7 @@
 import AppKit
 @testable import PerformanceCore
 import SwiftUI
+import SaaSMakerUI
 @testable import PerformanceDaddy
 import XCTest
 
@@ -67,6 +68,7 @@ final class DesignEvidenceTests: XCTestCase {
                     model.review(DiagnosticEngine().analyze(.init(startedAt: start, endedAt: start.addingTimeInterval(12), samples: samples, isFixture: true)))
                 }
                 let view = NSHostingView(rootView: FanInvestigationView(model: model)
+                    .smTheme(PerformanceTheme.palette)
                     .frame(width: width, height: 800))
                 view.frame = NSRect(x: 0, y: 0, width: width, height: 800)
                 let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
@@ -88,7 +90,7 @@ final class DesignEvidenceTests: XCTestCase {
     func testDashboardRendersAtSupportedNativeSizes() throws {
         let outputDirectory = ProcessInfo.processInfo.environment["PERFORMANCEDADDY_DESIGN_OUTPUT"]
         let specifications: [(label: Int, width: CGFloat, height: CGFloat)] = outputDirectory == nil
-            ? [(390, 980, 800)]
+            ? [(390, 980, 800), (1_180, 1_180, 800)]
             : [(390, 980, 800), (768, 1_096, 768), (1_440, 1_440, 900)]
 
         for specification in specifications {

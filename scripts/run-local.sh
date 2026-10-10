@@ -7,6 +7,7 @@ if pgrep -x PerformanceDaddy >/dev/null; then
 fi
 swift build --product PerformanceDaddy
 bin_path="$(swift build --show-bin-path)"
+python3 -c 'import sys; sys.path.insert(0, "scripts"); import package_resources; from pathlib import Path; package_resources.resource_bundles(Path(sys.argv[1]))' "$bin_path"
 bundle_path="$PWD/.build/PerformanceDaddy.app"
 framework_path="$PWD/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 test -d "$framework_path"
@@ -19,5 +20,5 @@ cp "$bin_path/PerformanceDaddy" "$bundle_path/Contents/MacOS/PerformanceDaddy.ne
 mv -f "$bundle_path/Contents/MacOS/PerformanceDaddy.next" "$bundle_path/Contents/MacOS/PerformanceDaddy"
 cp Support/Info.plist "$bundle_path/Contents/Info.plist"
 cp Support/PerformanceDaddy.icns "$bundle_path/Contents/Resources/PerformanceDaddy.icns"
-cp -R "$bin_path/PerformanceDaddy_PerformanceDaddy.bundle" "$bundle_path/Contents/Resources/"
+python3 scripts/package_resources.py --products "$bin_path" --destination "$bundle_path/Contents/Resources"
 open "$bundle_path"

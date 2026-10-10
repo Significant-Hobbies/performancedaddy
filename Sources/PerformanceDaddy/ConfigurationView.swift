@@ -1,6 +1,7 @@
 import AppKit
 import PerformanceCore
 import SwiftUI
+import SaaSMakerUI
 
 struct ConfigurationView: View {
     @State private var scan: ConfigurationScan?
@@ -28,7 +29,7 @@ struct ConfigurationView: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Configuration").font(.largeTitle.weight(.semibold)).accessibilityAddTraits(.isHeader)
+                    SMSectionHeader("Configuration", size: 30).accessibilityLabel("Configuration").accessibilityAddTraits(.isHeader)
                     Text("Find settings for your local shell and agent tools.")
                         .foregroundStyle(PerformanceTheme.secondaryInk)
                 }
@@ -38,7 +39,7 @@ struct ConfigurationView: View {
                     .disabled(scanning)
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Metadata only. Nothing edited or deleted.").font(.headline).foregroundStyle(PerformanceTheme.mintInk)
+                SMDisplay("Metadata only. Nothing edited or deleted.", size: 17).accessibilityLabel("Metadata only. Nothing edited or deleted.").foregroundStyle(PerformanceTheme.mintInk)
                 Text("Known shell and agent paths under your home folder. No project directories or file contents are scanned. Presence and age do not prove use or junk.")
                     .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -68,7 +69,7 @@ struct ConfigurationView: View {
                             Text(displayPath(file.path)).font(.caption).foregroundStyle(PerformanceTheme.secondaryInk).lineLimit(1)
                         }.frame(maxWidth: .infinity, alignment: .leading).help(file.path)
                         Text(file.owner).frame(width: 110, alignment: .leading).lineLimit(1)
-                        Text(file.status).font(.caption).foregroundStyle(file.status == "Present" ? PerformanceTheme.mintInk : PerformanceTheme.secondaryInk)
+                        SMStatusPill(file.status, tone: file.status == "Present" ? .success : .neutral)
                             .frame(width: 180, alignment: .leading)
                     }.padding(.vertical, 6).tag(file.id)
                         .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
@@ -95,7 +96,7 @@ struct ConfigurationView: View {
                         Text("Known tool location. Loading this file is not verified.")
                             .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
                         Spacer()
-                        Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: selected.path)]) }
+                        Button("reveal in finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: selected.path)]) }.accessibilityLabel("Reveal in Finder")
                             .disabled(selected.status != "Present" && selected.status != "Symlink · not followed")
                     }
                 }
