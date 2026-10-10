@@ -1,5 +1,6 @@
 import PerformanceCore
 import SwiftUI
+import SaaSMakerUI
 
 /// Read-only detail, deliberately separate from reviewed process actions.
 struct ResourceEvidenceView: View {
@@ -10,9 +11,9 @@ struct ResourceEvidenceView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Memory & thermals").font(.title2.weight(.semibold)).accessibilityAddTraits(.isHeader)
+                SMSectionHeader("Memory & thermals", size: 22).accessibilityLabel("Memory & thermals").accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("Done") { dismiss() }.buttonStyle(DaddyButtonStyle())
+                Button("done") { dismiss() }.accessibilityLabel("Done").buttonStyle(DaddyButtonStyle())
                     .keyboardShortcut(.cancelAction)
             }
             if let snapshot {
@@ -63,10 +64,13 @@ struct ResourceEvidenceView: View {
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.headline).foregroundStyle(PerformanceTheme.mintInk).accessibilityAddTraits(.isHeader)
-            content()
-        }.frame(maxWidth: .infinity, alignment: .leading)
+        SMCard(padding: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                SMEyebrow(title.lowercased()).accessibilityLabel(title)
+                    .foregroundStyle(PerformanceTheme.mintInk).accessibilityAddTraits(.isHeader)
+                content()
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
     private func row(_ title: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {

@@ -1,5 +1,6 @@
 import PerformanceCore
 import SwiftUI
+import SaaSMakerUI
 
 struct DashboardView: View {
     @ObservedObject var model: DiagnosisViewModel
@@ -27,7 +28,7 @@ struct DashboardView: View {
                 } else {
                     VStack(spacing: 0) {
                         HStack {
-                            Text("Root-cause analysis").font(.headline)
+                            SMDisplay("Root-cause analysis", size: 17).accessibilityLabel("Root-cause analysis")
                             Spacer()
                             Menu("Recent runs (\(model.recentReports.count))") {
                                 ForEach(Array(model.recentReports.enumerated()), id: \.offset) { _, report in
@@ -40,19 +41,19 @@ struct DashboardView: View {
                                 }
                                 if !model.recentReports.isEmpty {
                                     Divider()
-                                    Button("Delete all recent runs…", role: .destructive) {
+                                    Button("delete all recent runs…", role: .destructive) {
                                         showingDeleteRecentRuns = true
-                                    }
+                                    }.accessibilityLabel("Delete all recent runs…")
                                 }
                             }.disabled(model.recentReports.isEmpty || model.isRecording)
                                 .help("Last ten completed recordings, stored locally on this Mac.")
                             if let baseline = model.savedBaselineReport {
                                 Menu("Known-good baseline") {
-                                    Button("Review saved baseline") { model.review(baseline) }
+                                    Button("review saved baseline") { model.review(baseline) }.accessibilityLabel("Review saved baseline")
                                     Divider()
-                                    Button("Delete saved baseline…", role: .destructive) {
+                                    Button("delete saved baseline…", role: .destructive) {
                                         showingDeleteBaseline = true
-                                    }
+                                    }.accessibilityLabel("Delete saved baseline…")
                                 }.disabled(model.isRecording)
                             }
                             if model.historyStorageError != nil {
@@ -73,8 +74,7 @@ struct DashboardView: View {
                 }
             }
         }
-        .tint(PerformanceTheme.action)
-        .preferredColorScheme(.dark)
+        .smTheme(PerformanceTheme.palette)
         .buttonStyle(DaddyButtonStyle())
         .toolbar(.hidden, for: .windowToolbar)
         .task {
@@ -89,19 +89,19 @@ struct DashboardView: View {
             Text("This removes the local recordings and clears the open report. A separately saved known-good baseline stays available.")
         }
         .confirmationDialog("Delete known-good baseline?", isPresented: $showingDeleteBaseline) {
-            Button("Delete saved baseline", role: .destructive) {
+            Button("delete saved baseline", role: .destructive) {
                 Task { await model.deleteKnownGoodBaseline() }
-            }
+            }.accessibilityLabel("Delete saved baseline")
         } message: {
             Text("Future checks will no longer compare against this local capture. Recent runs stay available.")
         }
         .alert("Replace known-good baseline?", isPresented: $showingReplaceBaseline) {
-            Button("Replace baseline", role: .destructive) {
+            Button("replace baseline", role: .destructive) {
                 if let report = model.report {
                     Task { await model.saveKnownGoodBaseline(report) }
                 }
-            }
-            Button("Cancel", role: .cancel) {}
+            }.accessibilityLabel("Replace baseline")
+            Button("cancel", role: .cancel) {}.accessibilityLabel("Cancel")
         } message: {
             Text("The previous saved baseline will be replaced by this capture. Recent runs stay available.")
         }
@@ -116,7 +116,7 @@ struct DashboardView: View {
                     .tracking(-0.6).lineLimit(1).minimumScaleFactor(0.8)
             }.padding(.top, 20).padding(.bottom, 10)
             Button { destination = "Diagnose" } label: {
-                Label("Diagnose slowdown", systemImage: "waveform.path.ecg")
+                Label("diagnose slowdown", systemImage: "waveform.path.ecg").accessibilityLabel("Diagnose slowdown")
                     .frame(maxWidth: .infinity).frame(height: 28)
             }.buttonStyle(DaddyButtonStyle(prominent: true))
                 .help("Open a timed, read-only CPU, memory and thermal diagnostic. Recording starts only when you choose Start.")
@@ -144,7 +144,7 @@ struct DashboardView: View {
     }
 
     private func navigationHeading(_ title: String) -> some View {
-        Text(title).font(.system(size: 10, weight: .semibold)).tracking(1)
+        Text(title.lowercased()).font(.custom(PerformanceTheme.palette.displayFont, size: 10).weight(.semibold)).tracking(1)
             .foregroundStyle(PerformanceTheme.secondaryInk).padding(.horizontal, 10).padding(.vertical, 4)
     }
 
@@ -152,7 +152,7 @@ struct DashboardView: View {
         Button { destination = title } label: {
             HStack {
                 Image(systemName: icon).frame(width: 20).foregroundStyle(PerformanceTheme.mintInk)
-                Text(title)
+                Text(title.lowercased()).accessibilityLabel(title)
                 Spacer()
             }.padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                 .contentShape(Rectangle())
@@ -213,8 +213,7 @@ private struct StartDiagnosisView: View {
             }
 
             VStack(spacing: 10) {
-                Text("What is slowing your Mac?")
-                    .font(.largeTitle.bold())
+                SMSectionHeader("What is slowing your Mac?", alignment: .center, size: 34).accessibilityLabel("What is slowing your Mac?")
                     .foregroundStyle(PerformanceTheme.ink)
                 Text("Record while the slowdown is happening. This recording reads local system evidence and makes no changes.")
                     .font(.body)
@@ -232,7 +231,8 @@ private struct StartDiagnosisView: View {
             .pickerStyle(.segmented)
             .frame(width: 260)
 
-            Button("Start \(selectedLength.rawValue) check", action: onStart)
+            Button("start \(selectedLength.rawValue) check", action: onStart)
+                .accessibilityLabel("Start \(selectedLength.rawValue) check")
                 .buttonStyle(PrimaryActionButtonStyle())
 
             if let savedBaseline {
@@ -242,7 +242,7 @@ private struct StartDiagnosisView: View {
             }
 
             Button { showingShellDiagnosis = true } label: {
-                Label("Diagnose terminal startup…", systemImage: "terminal")
+                Label("diagnose terminal startup…", systemImage: "terminal").accessibilityLabel("Diagnose terminal startup…")
             }
             .help("Review a separate zsh experiment. Your startup scripts run only with explicit consent.")
             .sheet(isPresented: $showingShellDiagnosis) { ShellDiagnosisView() }
@@ -311,8 +311,7 @@ private struct RecordingView: View {
             .accessibilityLabel("Recording progress")
             .accessibilityValue(progress.formatted(.percent.precision(.fractionLength(0))))
 
-            Text("Watching what happens")
-                .font(.largeTitle.bold())
+            SMSectionHeader("Watching what happens", alignment: .center, size: 34).accessibilityLabel("Watching what happens")
                 .foregroundStyle(PerformanceTheme.ink)
             Text("Sampling CPU, processes, memory, swap, disk headroom and thermal state. No changes are being made.")
                 .font(.body)
@@ -320,7 +319,7 @@ private struct RecordingView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 560)
 
-            Button("Cancel recording", action: onCancel)
+            Button("cancel recording", action: onCancel).accessibilityLabel("Cancel recording")
                 .buttonStyle(.bordered)
             Spacer()
         }
@@ -400,7 +399,7 @@ private struct ReportView: View {
                             }.frame(maxWidth: .infinity, alignment: .leading)
                             Divider()
                         }
-                        Text("Measured CPU contributors").font(.headline).accessibilityAddTraits(.isHeader)
+                        SMDisplay("Measured CPU contributors", size: 17).accessibilityLabel("Measured CPU contributors").accessibilityAddTraits(.isHeader)
                         if report.rootCauseAnalysis.contributors.isEmpty {
                             Text("No positive readable process CPU rows were captured. This does not prove that every process was idle.")
                                 .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
@@ -423,13 +422,15 @@ private struct ReportView: View {
                             .font(.body)
                             .foregroundStyle(PerformanceTheme.secondaryInk)
                         HStack(spacing: 12) {
-                            Button(recommendedActionLabel, action: onVerify)
+                            Button(recommendedActionLabel.lowercased(), action: onVerify)
+                                .accessibilityLabel(recommendedActionLabel)
                                 .buttonStyle(PrimaryActionButtonStyle())
-                            Button("New check", action: onNewCheck)
+                            Button("new check", action: onNewCheck).accessibilityLabel("New check")
                                 .buttonStyle(.bordered)
                                 .controlSize(.large)
                         }
-                        Button(baselineButtonTitle, action: onSaveBaseline)
+                        Button(baselineButtonTitle.lowercased(), action: onSaveBaseline)
+                            .accessibilityLabel(baselineButtonTitle)
                             .disabled(report.capture.isFixture || isSavedBaseline)
                         Text("Save only a run you consider representative of good performance. New checks can compare with it; the capture stays on this Mac until you delete it.")
                             .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
@@ -457,7 +458,7 @@ private struct ReportView: View {
                 .padding(.top, 8)
             VStack(alignment: .leading, spacing: 7) {
                 Text(report.rootCauseAnalysis.headline)
-                    .font(.largeTitle.bold())
+                    .font(.custom(PerformanceTheme.palette.displayFont, size: 34).weight(.semibold))
                     .foregroundStyle(PerformanceTheme.ink)
                     .accessibilityAddTraits(.isHeader)
                 Text(report.rootCauseAnalysis.conclusion)
@@ -476,8 +477,7 @@ private struct ReportView: View {
     }
 
     private func assessmentStatus(_ assessment: CauseAssessment) -> some View {
-        Text(assessment.status.rawValue).font(.caption.weight(.medium))
-            .foregroundStyle(assessment.status == .observed ? PerformanceTheme.amber : PerformanceTheme.secondaryInk)
+        SMStatusPill(assessment.status.rawValue, tone: assessment.status == .observed ? .warning : .neutral)
     }
 
     private func comparisonBand(baseline: DiagnosticReport, comparison: DiagnosticComparison) -> some View {
@@ -570,20 +570,15 @@ private struct TriageBand<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            horizontalBand
-            VStack(alignment: .leading, spacing: 16) {
-                bandHeading
-                Divider()
-                content.frame(maxWidth: .infinity, alignment: .leading)
+        SMCard(padding: 24) {
+            ViewThatFits(in: .horizontal) {
+                horizontalBand
+                VStack(alignment: .leading, spacing: 16) {
+                    bandHeading
+                    Divider()
+                    content.frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
-        }
-        .padding(24)
-        .background(PerformanceTheme.surface.opacity(0.82))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(PerformanceTheme.divider, lineWidth: 1)
         }
     }
 
@@ -598,8 +593,7 @@ private struct TriageBand<Content: View>: View {
 
     private var bandHeading: some View {
             VStack(alignment: .leading, spacing: 7) {
-                Text(label)
-                    .font(.headline)
+                SMDisplay(label, size: 17).accessibilityLabel(label)
                     .foregroundStyle(PerformanceTheme.secondaryInk)
                     .accessibilityAddTraits(.isHeader)
                 Text(subtitle)

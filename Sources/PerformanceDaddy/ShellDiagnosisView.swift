@@ -1,5 +1,6 @@
 import PerformanceCore
 import SwiftUI
+import SaaSMakerUI
 
 /// A protected-focus review: executing startup scripts is not passive monitoring.
 struct ShellDiagnosisView: View {
@@ -14,9 +15,11 @@ struct ShellDiagnosisView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Label("Terminal startup", systemImage: "terminal").font(.title2.bold())
+                Label {
+                    SMDisplay("Terminal startup", size: 22).accessibilityLabel("Terminal startup")
+                } icon: { Image(systemName: "terminal") }
                 Spacer()
-                Button("Done") { dismiss() }.disabled(running).keyboardShortcut(.cancelAction)
+                Button("done") { dismiss() }.accessibilityLabel("Done").disabled(running).keyboardShortcut(.cancelAction)
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
@@ -25,14 +28,14 @@ struct ShellDiagnosisView: View {
                     Text("A separate interactive login shell runs in a pseudo-terminal. This is an experiment—not a sandbox. Your startup scripts can write files, access credentials, use the network or launch background programs. PerformanceDaddy does not edit your configuration.")
                         .fixedSize(horizontal: false, vertical: true)
                     Divider()
-                    Text("Choose what to run").font(.headline).accessibilityAddTraits(.isHeader)
+                    SMDisplay("Choose what to run", size: 17).accessibilityLabel("Choose what to run").accessibilityAddTraits(.isHeader)
                     Text("The minimal baseline skips personal startup files. The system zshenv file can still execute. Profiling runs one baseline and one configured shell, with a 10-second limit per shell.")
                         .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
                     Toggle("I allow one run of my zsh startup scripts", isOn: $consent)
                         .toggleStyle(.checkbox).disabled(running)
                     HStack {
-                        Button("Measure minimal shell") { start(profile: false) }.disabled(running)
-                        Button("Profile my startup") { start(profile: true) }
+                        Button("measure minimal shell") { start(profile: false) }.accessibilityLabel("Measure minimal shell").disabled(running)
+                        Button("profile my startup") { start(profile: true) }.accessibilityLabel("Profile my startup")
                             .buttonStyle(DaddyButtonStyle(prominent: true)).disabled(!consent || running)
                     }
                     if running {
@@ -40,13 +43,13 @@ struct ShellDiagnosisView: View {
                             ProgressView().controlSize(.small)
                             Text("Measuring in a separate shell…")
                             Spacer()
-                            Button("Cancel probe") { task?.cancel() }
+                            Button("cancel probe") { task?.cancel() }.accessibilityLabel("Cancel probe")
                         }
                     }
                     if let message { Text(message).foregroundStyle(PerformanceTheme.amber) }
                     if let report {
                         Divider()
-                        Text("Measured evidence").font(.headline).accessibilityAddTraits(.isHeader)
+                        SMDisplay("Measured evidence", size: 17).accessibilityLabel("Measured evidence").accessibilityAddTraits(.isHeader)
                         trial("Minimal shell", report.baseline)
                         if let configured = report.configured {
                             trial("Configured · profiler enabled", configured)
@@ -54,7 +57,7 @@ struct ShellDiagnosisView: View {
                                 if configured.functions.isEmpty {
                                     Text("No supported function timings were returned. Top-level commands are not attributed by this profiler.")
                                 } else {
-                                    Text("Functions · longest self time first").font(.headline)
+                                    SMDisplay("Functions · longest self time first", size: 17).accessibilityLabel("Functions · longest self time first")
                                     HStack {
                                         Text("FUNCTION").frame(maxWidth: .infinity, alignment: .leading)
                                         Text("SELF").frame(width: 75, alignment: .trailing)
@@ -80,7 +83,7 @@ struct ShellDiagnosisView: View {
                         }
                     }
                     Divider()
-                    Text("How to read this").font(.headline)
+                    SMDisplay("How to read this", size: 17).accessibilityLabel("How to read this")
                     Text("One trial is a clue, not proof. Timings have roughly 5 ms polling resolution and include diagnostic overhead. Self time excludes nested functions; inclusive time includes them—do not add inclusive rows together. This does not measure the first rendered prompt, typing latency, asynchronous work, or your terminal app itself.")
                     Text("The probe uses a minimal environment and starts from your home directory. Terminal-specific environment settings and externally supplied ZDOTDIR values are not reproduced. Ordinary shell output is discarded; only elapsed times and validated function-name rows are shown, in memory only. No command tracing or automatic export.")
                     Text("Cancel stops the diagnostic shell and its original process group. Independently launched or detached background programs may remain. Startup side effects cannot be undone by cancelling.")

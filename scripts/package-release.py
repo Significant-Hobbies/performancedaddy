@@ -7,6 +7,7 @@ import plistlib
 import shutil
 import subprocess
 import sparkle_support
+import package_resources
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,6 +30,7 @@ def main():
     resources = products / "PerformanceDaddy_PerformanceDaddy.bundle"
     if products.name != "Release" or not binary.is_file() or not resources.is_dir():
         raise SystemExit("Expected existing Release binary and resource bundle")
+    package_resources.resource_bundles(products)
     if args.build < 1 or not all(part.isdigit() for part in args.version.split(".")):
         raise SystemExit("Version must be numeric and build must be positive")
     sources = list((ROOT / "Sources").rglob("*.swift")) + [ROOT / "Package.swift"]
@@ -51,7 +53,7 @@ def main():
     (contents / "MacOS").mkdir(parents=True)
     (contents / "Resources").mkdir()
     shutil.copy2(binary, contents / "MacOS/PerformanceDaddy")
-    shutil.copytree(resources, contents / "Resources" / resources.name)
+    package_resources.copy_resources(products, contents / "Resources")
     shutil.copy2(ROOT / "Support/PerformanceDaddy.icns", contents / "Resources/PerformanceDaddy.icns")
 
     info = plistlib.loads((ROOT / "Support/Info.plist").read_bytes())

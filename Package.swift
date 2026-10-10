@@ -12,13 +12,13 @@ let package = Package(
         .library(name: "PerformanceCore", targets: ["PerformanceCore"]),
         .executable(name: "PerformanceDaddy", targets: ["PerformanceDaddy"]),
     ],
-    dependencies: [.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6")],
+    dependencies: [.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"), .package(url: "https://github.com/sass-maker/ui-library", from: "0.1.14")],
     targets: [
         .target(name: "NativeInspection"),
         .target(name: "PerformanceCore", dependencies: ["NativeInspection"]),
         .executableTarget(
             name: "PerformanceDaddy",
-            dependencies: ["PerformanceCore", "NativeInspection", .product(name: "Sparkle", package: "Sparkle")],
+            dependencies: [.product(name: "SaaSMakerUI", package: "ui-library"), "PerformanceCore", "NativeInspection", .product(name: "Sparkle", package: "Sparkle")],
             resources: [.process("Resources")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
