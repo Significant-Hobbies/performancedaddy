@@ -4,11 +4,14 @@ public enum ProcessUnderstanding {
     public static func catalogDescription(executable: String) -> String? {
         ProcessCatalog.match(executable: executable).map { "\($0.category): \($0.role) Source: \($0.source)." }
     }
-    public static func duration(_ identity: ProcessIdentity, at date: Date) -> TimeInterval? {
+    public static func startDate(_ identity: ProcessIdentity, at date: Date) -> Date? {
         let start = Double(identity.started) / 1_000_000
         let now = date.timeIntervalSince1970
         guard identity.started > 0, now.isFinite, start <= now else { return nil }
-        return now - start
+        return Date(timeIntervalSince1970: start)
+    }
+    public static func duration(_ identity: ProcessIdentity, at date: Date) -> TimeInterval? {
+        startDate(identity, at: date).map { date.timeIntervalSince($0) }
     }
 
     /// Path association, not verified publisher identity. Outermost app owns nested helpers.

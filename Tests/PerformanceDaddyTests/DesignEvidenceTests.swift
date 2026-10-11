@@ -7,6 +7,43 @@ import XCTest
 
 @MainActor
 final class DesignEvidenceTests: XCTestCase {
+    func testPortAndAgentProcessDetailsRenderAtSupportedNativeSizes() throws {
+        let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(".build/process-details-preview", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for page in [LivePage.ports, .agents] {
+            for width: CGFloat in [760, 876, 1_220] {
+                for selected in [false, true] {
+                    let model = LiveViewModel()
+                    let snapshot = fixtureSnapshot()
+                    let root = snapshot.processes[0]
+                    let agent = LiveProcess(id: root.id, parent: root.parent, uid: root.uid, name: root.name,
+                        executable: root.executable, directory: root.directory, cpu: root.cpu,
+                        memory: root.memory, hasControllingTerminal: true, ports: root.ports)
+                    model.snapshot = LiveSnapshot(date: snapshot.date, processes: [agent] + Array(snapshot.processes.dropFirst()),
+                        system: snapshot.system, pressure: snapshot.pressure, compressed: snapshot.compressed,
+                        unavailableProcesses: 0, portsDate: snapshot.portsDate, scanSeconds: snapshot.scanSeconds)
+                    if selected { model.selection = [root.id] }
+                    let view = NSHostingView(rootView: LiveWorkloadsView(model: model, page: page)
+                        .smTheme(PerformanceTheme.palette)
+                        .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk)
+                        .buttonStyle(DaddyButtonStyle()).frame(width: width, height: 800))
+                    view.frame = NSRect(x: 0, y: 0, width: width, height: 800)
+                    let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+                    window.contentView = view
+                    view.layoutSubtreeIfNeeded()
+                    let representation = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                    view.cacheDisplay(in: view.bounds, to: representation)
+                    XCTAssertEqual(representation.size, view.frame.size)
+                    XCTAssertEqual(model.rows(for: page).count, 1)
+                    let png = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
+                    try png.write(to: directory.appendingPathComponent("\(page == .ports ? "ports" : "agents")-\(Int(width))-\(selected ? "inspector" : "list").png"), options: .atomic)
+                }
+            }
+        }
+    }
+
     func testAgentWallFitsViewportWithoutScrollAtSparseAndDenseCounts() throws {
         for count in [1, 6, 20] {
             let model = LiveViewModel()

@@ -409,6 +409,18 @@ final class LiveViewModel: ObservableObject {
         if let path = process.appPath { return "\(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent) · \(process.id.pid)" }
         return process.directory.isEmpty || process.directory == "/" ? "PID \(process.id.pid)" : "\(URL(fileURLWithPath: process.directory).lastPathComponent) · \(process.id.pid)"
     }
+    func processContext(_ process: LiveProcess) -> String {
+        let description: String
+        if let agent = process.agent { description = "\(agent) coding agent" }
+        else if let catalog = process.catalog { description = catalog.role }
+        else if let path = process.appPath {
+            description = "Inside \(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)"
+        } else {
+            description = process.executable.isEmpty ? "Executable unavailable" : "Executable: \(URL(fileURLWithPath: process.executable).lastPathComponent)"
+        }
+        guard process.appPath == nil, let path = ancestorApp(of: process)?.appPath else { return description }
+        return "\(description) · \(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent) ancestor"
+    }
     func memoryTrend(for process: LiveProcess) -> ProcessMemoryTrend? { processHistory.trend(for: process.id) }
     func observedProcess(_ process: LiveProcess) -> LiveProcess? { snapshot?.processes.first { $0.id == process.id } }
 
@@ -587,6 +599,11 @@ final class LiveViewModel: ObservableObject {
     }
     func prepareSelected() {
         prepare((snapshot?.processes ?? []).filter { selection.contains($0.id) })
+    }
+    func prepareRowStop(_ process: LiveProcess, on page: LivePage) {
+        guard !performingAction else { return }
+        if page == .agents { prepareTree(process) }
+        else { prepare([process]) }
     }
     func prepareTree(_ process: LiveProcess) {
         prepare(index.descendants(of: process))

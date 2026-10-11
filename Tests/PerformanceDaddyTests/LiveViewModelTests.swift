@@ -520,6 +520,35 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertFalse(model.performingAction)
     }
 
+    func testRowStopReviewsOnlyPortOwnerButIncludesAgentChildren() {
+        let model = LiveViewModel()
+        let root = process(20, name: "codex", cpu: 1)
+        let child = process(21, parent: 20, name: "node", cpu: 0)
+        let sibling = process(22, name: "codex", cpu: 0)
+        model.snapshot = snapshot([root, child, sibling])
+        model.prepareRowStop(root, on: .ports)
+        XCTAssertEqual(model.review?.targets.map(\.id), [root.id])
+        model.prepareRowStop(root, on: .agents)
+        XCTAssertEqual(Set(model.review?.targets.map(\.id) ?? []), [root.id, child.id])
+        XCTAssertFalse(model.performingAction, "Opening a review must not terminate anything")
+        model.review = nil
+        model.performingAction = true
+        model.prepareRowStop(root, on: .agents)
+        XCTAssertNil(model.review)
+    }
+
+    func testRowContextUsesExecutableClassificationAndObservedAppAncestry() {
+        let model = LiveViewModel()
+        let app = LiveProcess(id: .init(pid: 10, started: 1), parent: 1, uid: getuid(), name: "Terminal",
+                              executable: "/Applications/Terminal.app/Contents/MacOS/Terminal", directory: "/", cpu: 0, memory: 1)
+        let agent = process(20, parent: 10, name: "codex", cpu: 0)
+        let child = process(21, parent: 20, name: "node", cpu: 0)
+        model.snapshot = snapshot([app, agent, child])
+        XCTAssertEqual(model.processContext(agent), "Codex coding agent · Terminal ancestor")
+        XCTAssertEqual(model.processContext(child), "Executable: node · Terminal ancestor")
+        XCTAssertEqual(model.processContext(app), "Inside Terminal")
+    }
+
     func testReusedByteFormatterPreservesExistingOutput() {
         for bytes: UInt64 in [0, 1, 1023, 1024, 1_048_576, 48_000_000_000, UInt64.max] {
             XCTAssertEqual(LiveViewModel.bytes(bytes),

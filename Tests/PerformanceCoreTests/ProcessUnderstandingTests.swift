@@ -8,6 +8,16 @@ final class ProcessUnderstandingTests: XCTestCase {
     }
     private func date(_ seconds: Double) -> Date { Date(timeIntervalSince1970: seconds) }
 
+    func testStartDateUsesKernelMicrosecondsAndRejectsUnavailableOrFutureEvidence() throws {
+        let identity = process(start: 1_750_000).id
+        let started = try XCTUnwrap(ProcessUnderstanding.startDate(identity, at: date(11)))
+        XCTAssertEqual(started.timeIntervalSince1970, 1.75)
+        XCTAssertEqual(ProcessUnderstanding.duration(identity, at: date(11)), 9.25)
+        XCTAssertNil(ProcessUnderstanding.startDate(process(start: 0).id, at: date(11)))
+        XCTAssertNil(ProcessUnderstanding.startDate(process(start: 20_000_000).id, at: date(11)))
+        XCTAssertNil(ProcessUnderstanding.startDate(identity, at: date(.infinity)))
+    }
+
     func testDurationAndAppAssociationRejectInvalidEvidence() {
         XCTAssertNotNil(ProcessUnderstanding.catalogDescription(executable: "/usr/sbin/cfprefsd"))
         XCTAssertNil(ProcessUnderstanding.catalogDescription(executable: "/tmp/cfprefsd"))
