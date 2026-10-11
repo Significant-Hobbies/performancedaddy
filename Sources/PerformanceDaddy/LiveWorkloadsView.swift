@@ -188,6 +188,10 @@ struct LiveWorkloadsView: View {
         Toggle("include system", isOn: $model.includeSystem).toggleStyle(.checkbox)
             .accessibilityLabel("Include system")
             .help("Include system and other-user processes when macOS allows inspection")
+        if showsRowDetails {
+            Button("Oldest first") { model.sortOrder = [KeyPathComparator(\LiveProcess.id.started)] }
+                .help("Sort by process start time to review older processes. Age does not establish staleness.")
+        }
         if page == .workloads || page == .memory {
             Menu("group · \(model.grouping.rawValue.lowercased())") {
                 ForEach(LiveViewModel.ProcessGrouping.allCases) { mode in
@@ -237,13 +241,14 @@ struct LiveWorkloadsView: View {
                 Color.clear.frame(width: 28, height: 1)
                 sortHeader("PROCESS", key: \.sortName, alignment: .leading)
                 if page != .ports {
-                    sortHeader("RUNNING", key: \.sortRunning, initial: .reverse).frame(width: 64)
+                    if !showsRowDetails { sortHeader("RUNNING", key: \.sortRunning, initial: .reverse).frame(width: 64) }
                     sortHeader("CPU", key: \.sortCPU, initial: .reverse).frame(width: 54)
                 }
                 sortHeader("RAM", key: \.memory, initial: .reverse).frame(width: 72)
                 if page != .ports {
                     sortHeader("PORTS", key: \.sortPort, alignment: .leading).frame(width: 72)
                 }
+                if showsRowDetails { Color.clear.frame(width: 54, height: 1) }
             }.padding(.horizontal, 4).zIndex(10)
             Rectangle().fill(PerformanceTheme.divider).frame(height: 1)
             if groupsRows {
@@ -291,10 +296,19 @@ struct LiveWorkloadsView: View {
                 Text(process.sortName).fontWeight(.medium).lineLimit(2)
                 Text(model.processSubtitle(process))
                     .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk).lineLimit(2)
+                if showsRowDetails {
+                    Text(model.processContext(process))
+                        .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk).lineLimit(2)
+                    Text(startSummary(process))
+                        .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }.frame(maxWidth: .infinity, alignment: .leading).help(process.executable)
             if page != .ports {
-            Text(uptime(process)).monospacedDigit().frame(width: 64, alignment: .trailing)
-                .accessibilityLabel("Running for \(uptime(process))")
+            if !showsRowDetails {
+                Text(uptime(process)).monospacedDigit().frame(width: 76, alignment: .trailing)
+                    .accessibilityLabel("Running for \(uptime(process))")
+            }
             Text(process.cpu.map { String(format: "%.1f%%", $0) } ?? "—").monospacedDigit()
                 .accessibilityLabel(process.cpu.map { String(format: "CPU %.1f percent", $0) } ?? "CPU not yet measured")
                 .frame(width: 54, alignment: .trailing)
@@ -309,6 +323,16 @@ struct LiveWorkloadsView: View {
                 .monospacedDigit().foregroundStyle(process.ports.isEmpty ? PerformanceTheme.secondaryInk : PerformanceTheme.cyan)
                 .lineLimit(2).frame(width: 72, alignment: .leading)
                 .help(process.ports.map { "\($0.transport) \($0.endpoint)" }.joined(separator: "\n"))
+            }
+            if showsRowDetails {
+                Button("Stop…") { model.prepareRowStop(process, on: page) }
+                    .buttonStyle(.borderless).frame(width: 54)
+                    .foregroundStyle(PerformanceTheme.coral)
+                    .disabled(process.stopRestriction != nil || model.performingAction)
+                    .accessibilityLabel("Review stop for \(process.sortName), PID \(process.id.pid)")
+                    .help(process.stopRestriction ?? (page == .agents
+                        ? "Review this agent and its observed children before stopping them."
+                        : "Review this process before stopping it and releasing its ports."))
             }
         }.padding(.vertical, 6).tag(process.id)
             .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
@@ -338,6 +362,8 @@ struct LiveWorkloadsView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
+
+    private var showsRowDetails: Bool { page == .ports || page == .agents }
 
     private func prominentPorts(_ process: LiveProcess) -> some View {
         let numbers = Set(process.ports.map(\.port)).sorted()
@@ -399,6 +425,17 @@ struct LiveWorkloadsView: View {
                 }
                 Text("PID \(process.id.pid) · \(process.cpu.map { String(format: "%.1f%% CPU", $0) } ?? "Measuring CPU")")
                     .foregroundStyle(.secondary)
+                Text("Started \(startTime(process)) · running for \(uptime(process))")
+                    .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk).textSelection(.enabled)
+                if showsRowDetails {
+                    Text("Age and low CPU do not prove a process is stale. Stop it when you know its work is no longer needed.")
+                        .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                    Button(page == .agents ? "Review agent stop…" : "Review process stop…") {
+                        model.prepareRowStop(process, on: page)
+                    }
+                    .disabled(process.stopRestriction != nil || model.performingAction)
+                    .help(process.stopRestriction ?? "Review exact targets; normal termination is the default.")
+                }
                 if page == .agents {
                     Text("CPU, RAM and ports include this agent's observed children. Same-provider wrappers are grouped here; separate launches stay separate. Nested providers and shared resident pages can overlap, so do not sum agent rows.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -509,6 +546,14 @@ struct LiveWorkloadsView: View {
         if seconds >= 86_400 { return "\(seconds / 86_400)d \(seconds % 86_400 / 3600)h" }
         return seconds >= 3600 ? "\(seconds / 3600)h \(seconds % 3600 / 60)m" : "\(seconds / 60)m \(seconds % 60)s"
     }
+    private func startTime(_ process: LiveProcess) -> String {
+        guard let date = ProcessUnderstanding.startDate(process.id, at: model.snapshot?.date ?? Date()) else { return "Unavailable" }
+        return date.formatted(date: .abbreviated, time: .standard)
+    }
+    private func startSummary(_ process: LiveProcess) -> String {
+        guard let date = ProcessUnderstanding.startDate(process.id, at: model.snapshot?.date ?? Date()) else { return "Start time unavailable" }
+        return "Started \(date.formatted(.dateTime.day().month(.abbreviated).hour().minute())) · \(uptime(process)) ago"
+    }
     private var footer: some View {
         VStack(alignment: .leading, spacing: 5) {
             if let notice = model.exportNotice {
@@ -570,7 +615,18 @@ private struct StopReviewView: View {
                 HStack {
                     VStack(alignment: .leading) {
                         Text(process.name).fontWeight(.medium)
-                        Text(process.directory).font(.caption).foregroundStyle(.secondary)
+                        Text(model.processContext(process)).font(.caption).foregroundStyle(.secondary)
+                        if let started = ProcessUnderstanding.startDate(process.id, at: model.snapshot?.date ?? Date()) {
+                            Text("Started \(started.formatted(date: .abbreviated, time: .standard))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Text("Start time unavailable").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Text(process.executable.isEmpty ? "Executable unavailable" : process.executable)
+                            .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        if !process.directory.isEmpty {
+                            Text(process.directory).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     Spacer()
                     Text("PID \(process.id.pid)").monospacedDigit()
