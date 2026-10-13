@@ -391,6 +391,29 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(model.agentWallTiles.map(\.id.pid), [13])
     }
 
+    func testSuspendedTerminalJobDoesNotCreateAFifthActiveSession() {
+        let model = LiveViewModel()
+        let terminals = (1...4).map { pid in
+            LiveProcess(id: .init(pid: Int32(pid + 100), started: UInt64(pid)), parent: 1, uid: getuid(),
+                        name: "codex", executable: "/opt/bin/codex", directory: "/tmp",
+                        cpu: 0, memory: 1, hasControllingTerminal: true)
+        }
+        func stopped(_ value: Bool) -> LiveProcess {
+            LiveProcess(id: .init(pid: 200, started: 10), parent: 1, uid: getuid(),
+                        name: "codex", executable: "/opt/bin/codex", directory: "/tmp",
+                        cpu: 0, memory: 1, hasControllingTerminal: true, isSuspended: value)
+        }
+        model.snapshot = snapshot(terminals + [stopped(true)])
+        XCTAssertEqual(model.agentCount, 4)
+        XCTAssertEqual(model.rows(for: .agents).count, 4)
+        XCTAssertEqual(model.rows(for: .workloads).count, 5)
+        XCTAssertEqual(model.agentWallTiles.count, 4)
+        XCTAssertTrue(model.processContext(stopped(true)).contains("suspended by macOS"))
+        model.snapshot = snapshot(terminals + [stopped(false)])
+        XCTAssertEqual(model.agentCount, 5)
+        XCTAssertEqual(model.rows(for: .agents).count, 5)
+    }
+
     func testInstrumentedCodexHostDoesNotCreateAFifthSession() throws {
         let model = LiveViewModel()
         func codex(_ pid: Int32, parent: Int32, terminal: Bool) -> LiveProcess {

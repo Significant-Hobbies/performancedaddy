@@ -28,6 +28,7 @@ public struct LiveProcess: Identifiable, Sendable {
     public let name: String
     public let executable: String
     public let directory: String
+    public let isSuspended: Bool
     public let hasControllingTerminal: Bool
     public let cpu: Double?
     public let memory: UInt64
@@ -42,12 +43,13 @@ public struct LiveProcess: Identifiable, Sendable {
     public let appPath: String?
     public init(id: ProcessIdentity, parent: Int32, uid: UInt32, name: String,
                 executable: String, directory: String, cpu: Double?, memory: UInt64,
-                hasControllingTerminal: Bool = false,
+                hasControllingTerminal: Bool = false, isSuspended: Bool = false,
                 ports: [ListeningPort] = [], portsIncomplete: Bool = false,
                 footprint: UInt64? = nil, diskReadBytes: UInt64? = nil, diskWrittenBytes: UInt64? = nil) {
         self.id = id; self.parent = parent; self.uid = uid; self.name = name
         self.executable = executable; self.directory = directory; self.cpu = cpu
         self.hasControllingTerminal = hasControllingTerminal
+        self.isSuspended = isSuspended
         self.agent = AgentIdentity.label(executable: executable, processName: name)
         self.catalog = ProcessCatalog.match(executable: executable)
         self.appPath = ProcessUnderstanding.appPath(for: executable)
@@ -254,7 +256,7 @@ public actor WorkloadSampler {
                                          name: name.isEmpty ? "Process \(pid)" : name,
                                          executable: Self.string(&raw.path), directory: Self.string(&raw.cwd),
                                          cpu: cpu, memory: raw.memory,
-                                         hasControllingTerminal: raw.has_terminal != 0,
+                                         hasControllingTerminal: raw.has_terminal != 0, isSuspended: raw.is_suspended != 0,
                                          ports: sockets[identity]?.0 ?? [],
                                          portsIncomplete: sockets[identity]?.1 ?? true,
                                          footprint: raw.resource_available != 0 ? raw.footprint : nil,

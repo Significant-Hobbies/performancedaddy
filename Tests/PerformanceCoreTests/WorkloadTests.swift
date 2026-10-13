@@ -22,6 +22,27 @@ final class WorkloadTests: XCTestCase {
         XCTAssertEqual(absent.resource_available, 0)
     }
 
+    func testNativeSuspensionIsMeasuredForAnOwnedChild() throws {
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        child.arguments = ["30"]
+        try child.run()
+        defer {
+            kill(child.processIdentifier, SIGCONT)
+            child.terminate()
+            child.waitUntilExit()
+        }
+        var native = PDProcess()
+        XCTAssertEqual(pd_process(child.processIdentifier, &native), 1)
+        XCTAssertEqual(native.is_suspended, 0)
+        XCTAssertEqual(kill(child.processIdentifier, SIGSTOP), 0)
+        for _ in 0..<100 {
+            if pd_process(child.processIdentifier, &native) == 1 && native.is_suspended != 0 { break }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        XCTAssertEqual(native.is_suspended, 1)
+    }
+
     func testSameProviderWrappersCollapseButSiblingsAndOtherAgentsRemain() {
         let root = process(200, name: "devin")
         let wrapper = process(201, parent: 200, name: "sh")

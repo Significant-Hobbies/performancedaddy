@@ -317,7 +317,7 @@ final class LiveViewModel: ObservableObject {
                                memory: family.reduce(0) { total, process in
                                    let sum = total.addingReportingOverflow(process.memory)
                                    return sum.overflow ? UInt64.max : sum.partialValue
-                               }, hasControllingTerminal: root.hasControllingTerminal,
+                               }, hasControllingTerminal: root.hasControllingTerminal, isSuspended: root.isSuspended,
                                ports: Array(Set(family.flatMap(\.ports))).sorted { $0.id < $1.id },
                                portsIncomplete: family.contains(where: \.portsIncomplete))
             }
@@ -411,7 +411,9 @@ final class LiveViewModel: ObservableObject {
     }
     func processContext(_ process: LiveProcess) -> String {
         let description: String
-        if let agent = process.agent { description = "\(agent) coding agent" }
+        if let agent = process.agent {
+            description = "\(agent) coding agent" + (process.isSuspended ? " · suspended by macOS" : "")
+        }
         else if let catalog = process.catalog { description = catalog.role }
         else if let path = process.appPath {
             description = "Inside \(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent)"
@@ -428,7 +430,8 @@ final class LiveViewModel: ObservableObject {
     var portCount: Int { snapshot?.processes.reduce(0) { $0 + $1.ports.count } ?? 0 }
     var agentCount: Int { agentRoots.filter { $0.isUserProcess && isObservedAgentSession($0) }.count }
     private func isObservedAgentSession(_ root: LiveProcess) -> Bool {
-        guard !absentAgentProcesses.contains(root.id) else { return false }
+        // A stopped shell job remains a process, but is not an active session.
+        guard !root.isSuspended, !absentAgentProcesses.contains(root.id) else { return false }
         // A different provider in the ancestor chain owns this nested agent
         // workload. A PTY (including its own foreground group) does not make
         // an embedded tool an additional top-level user session. Idle roots

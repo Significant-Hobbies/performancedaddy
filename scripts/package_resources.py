@@ -3,6 +3,8 @@ import argparse
 import hashlib
 from pathlib import Path
 import shutil
+import subprocess
+import uuid
 
 BUNDLE_NAMES = ("PerformanceDaddy_PerformanceDaddy.bundle", "SaaSMakerUI_SaaSMakerUI.bundle")
 
@@ -20,6 +22,28 @@ def copy_resources(products: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     for bundle in bundles:
         shutil.copytree(bundle, destination / bundle.name, dirs_exist_ok=True)
+
+
+def check_startup(products: Path, app: Path) -> None:
+    """Require packaged fonts and the actual window without build-path fallbacks."""
+    bundles = resource_bundles(products)
+    held = []
+    try:
+        for bundle in bundles:
+            relocated = bundle.with_name(f".{bundle.name}.startup-check-{uuid.uuid4().hex}")
+            bundle.rename(relocated)
+            held.append((bundle, relocated))
+        executable = app.resolve() / "Contents/MacOS/PerformanceDaddy"
+        for flag, marker in (("--check-ui-resources", "PerformanceDaddy UI resources loaded"),
+                             ("--check-app-startup", "PerformanceDaddy app startup verified")):
+            result = subprocess.run([str(executable), flag], check=True, timeout=30,
+                                    capture_output=True, text=True)
+            if marker not in result.stdout.splitlines():
+                raise RuntimeError(f"Packaged app did not complete {flag}")
+            print(marker)
+    finally:
+        for bundle, relocated in reversed(held):
+            relocated.rename(bundle)
 
 
 def bundle_hashes(bundle: Path) -> dict[str, str]:

@@ -3,6 +3,7 @@ import runpy
 import sys
 import tempfile
 import unittest
+import subprocess
 from unittest.mock import patch
 
 import package_resources
@@ -61,6 +62,37 @@ class PackageResourceTests(unittest.TestCase):
             (products / package_resources.BUNDLE_NAMES[1]).write_text("not a bundle")
             with self.assertRaisesRegex(SystemExit, "SaaSMakerUI_SaaSMakerUI.bundle"):
                 package_resources.resource_bundles(products)
+
+    def test_startup_probes_require_real_window_and_restore_build_bundles(self):
+        for error in (None, subprocess.CalledProcessError(5, ["fixture"]),
+                      subprocess.TimeoutExpired(["fixture"], 30), RuntimeError("no marker")):
+            with self.subTest(error=error), tempfile.TemporaryDirectory() as folder:
+                products = Path(folder) / "Debug"
+                for name in package_resources.BUNDLE_NAMES:
+                    (products / name).mkdir(parents=True)
+                commands = []
+
+                def probe(command, **kwargs):
+                    self.assertTrue(all(not (products / name).exists() for name in package_resources.BUNDLE_NAMES))
+                    commands.append(command)
+                    if command[1] == "--check-app-startup":
+                        if isinstance(error, RuntimeError):
+                            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                        if error:
+                            raise error
+                        marker = "PerformanceDaddy app startup verified"
+                    else:
+                        marker = "PerformanceDaddy UI resources loaded"
+                    return subprocess.CompletedProcess(command, 0, stdout=marker + "\n", stderr="")
+
+                with patch("subprocess.run", side_effect=probe):
+                    if error:
+                        with self.assertRaises(type(error)):
+                            package_resources.check_startup(products, Path(folder) / "PerformanceDaddy.app")
+                    else:
+                        package_resources.check_startup(products, Path(folder) / "PerformanceDaddy.app")
+                self.assertEqual([c[1] for c in commands], ["--check-ui-resources", "--check-app-startup"])
+                self.assertTrue(all((products / name).is_dir() for name in package_resources.BUNDLE_NAMES))
 
     def make_architecture_bundles(self, root):
         bundles = []
