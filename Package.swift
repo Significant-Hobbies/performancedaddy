@@ -14,7 +14,7 @@ let package = Package(
     ],
     dependencies: [.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"), .package(url: "https://github.com/sass-maker/ui-library", from: "0.1.14")],
     targets: [
-        .target(name: "NativeInspection"),
+        .target(name: "NativeInspection", linkerSettings: [.linkedFramework("IOKit")]),
         .target(name: "PerformanceCore", dependencies: ["NativeInspection"]),
         .executableTarget(
             name: "PerformanceDaddy",

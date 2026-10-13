@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import NativeInspection
 
-public struct ProcessIdentity: Hashable, Sendable {
+public struct ProcessIdentity: Hashable, Codable, Sendable {
     public let pid: Int32
     public let started: UInt64
     public init(pid: Int32, started: UInt64) { self.pid = pid; self.started = started }
@@ -101,6 +101,7 @@ public struct LiveSnapshot: Sendable {
     public let unavailableProcesses: Int
     public let portsDate: Date
     public let scanSeconds: Double
+    public var hardware: HardwareEvidence? = nil
 }
 
 public enum WorkloadGrouping {
@@ -201,6 +202,7 @@ public struct WorkloadIndex: Sendable {
 public actor WorkloadSampler {
     static let portRefreshInterval: TimeInterval = 30
     private let systemSampler = LiveSystemSampler()
+    private let hardwareReader = HardwareEvidenceReader()
     private var counters: [ProcessIdentity: (UInt64, Double)] = [:]
     private var sockets: [ProcessIdentity: ([ListeningPort], Bool)] = [:]
     private var portsDate = Date.distantPast
@@ -270,10 +272,11 @@ public actor WorkloadSampler {
         var size = MemoryLayout<Int32>.size
         let result = sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0)
         let pressure = result != 0 ? "Unavailable" : level == 1 ? "Normal" : level == 2 ? "Warning" : level == 4 ? "Critical" : "Unknown"
+        let hardware = hardwareReader.read()
         return LiveSnapshot(date: now, processes: processes, system: system, pressure: pressure,
                             compressed: system.memory?.compressedBytes,
                             unavailableProcesses: missing, portsDate: portsDate,
-                            scanSeconds: ProcessInfo.processInfo.systemUptime - began)
+                            scanSeconds: ProcessInfo.processInfo.systemUptime - began, hardware: hardware)
     }
 
     private static func string<T>(_ value: inout T) -> String {

@@ -9,6 +9,21 @@ public struct DiagnosticEngine: Sendable {
     public init() {}
 
     public func compare(before: DiagnosticReport, after: DiagnosticReport) -> DiagnosticComparison {
+        let beforeRich = before.capture.samples.contains { $0.incident != nil }
+        let afterRich = after.capture.samples.contains { $0.incident != nil }
+        if beforeRich != afterRich {
+            return DiagnosticComparison(outcome: .inconclusive, title: "The capture capabilities differ.", detail: "Make two new recordings with the same task and evidence coverage. The older recording lacks incident pressure, I/O and hardware evidence.", cpuDelta: nil, memoryHeadroomDelta: nil)
+        }
+        let beforeModes = Set(before.capture.samples.compactMap { $0.power?.lowPowerMode })
+        let afterModes = Set(after.capture.samples.compactMap { $0.power?.lowPowerMode })
+        if beforeRich && (beforeModes.count > 1 || afterModes.count > 1 || (!beforeModes.isEmpty && !afterModes.isEmpty && beforeModes != afterModes)) {
+            return DiagnosticComparison(outcome: .inconclusive, title: "The power policies differ.", detail: "Repeat the same task under the same power mode. Lower CPU activity under a different policy does not establish better responsiveness.", cpuDelta: nil, memoryHeadroomDelta: nil)
+        }
+        let beforeContext = before.capture.samples.compactMap { $0.incident?.foreground?.bundleID }.last
+        let afterContext = after.capture.samples.compactMap { $0.incident?.foreground?.bundleID }.last
+        if let beforeContext, let afterContext, beforeContext != afterContext {
+            return DiagnosticComparison(outcome: .inconclusive, title: "The foreground contexts differ.", detail: "Repeat the same task with the same app before interpreting these resource differences. Task responsiveness has not been measured.", cpuDelta: nil, memoryHeadroomDelta: nil)
+        }
         let beforeCPU = average(before.cpuSeries)
         let afterCPU = average(after.cpuSeries)
         let cpuDelta = beforeCPU.flatMap { beforeValue in
@@ -42,8 +57,26 @@ public struct DiagnosticEngine: Sendable {
         let memoryImproved = (headroomDelta ?? 0) >= 0.08
         let memoryWorsened = (headroomDelta ?? 0) <= -0.08
         let outcome: ComparisonOutcome
-        let improved = cpuImproved || memoryImproved || afterThermal < beforeThermal
-        let worsened = cpuWorsened || memoryWorsened || afterThermal > beforeThermal
+        func pressure(_ report: DiagnosticReport) -> Int? {
+            let values = report.capture.samples.compactMap { sample -> Int? in
+                switch sample.incident?.pressure { case "Normal": 0; case "Warning": 1; case "Critical": 2; default: nil }
+            }
+            guard values.count >= 2, values.count * 5 >= report.capture.samples.count * 4 else { return nil }
+            return values.max()
+        }
+        if beforeRich && (pressure(before) == nil || pressure(after) == nil) {
+            return DiagnosticComparison(outcome: .inconclusive, title: "Memory-pressure coverage is insufficient.", detail: "The recorded CPU differences cannot establish overall improvement while memory-pressure evidence is missing. Repeat the same task.", cpuDelta: cpuDelta, memoryHeadroomDelta: headroomDelta)
+        }
+        let pressureDelta = pressure(before).flatMap { a in pressure(after).map { $0 - a } }
+        func paging(_ report: DiagnosticReport) -> Bool? {
+            let rates = report.capture.samples.compactMap { $0.memory?.swapOutBytesPerSecond }.filter { $0.isFinite && $0 >= 0 }
+            guard rates.count >= 2, rates.count * 5 >= report.capture.samples.count * 4 else { return nil }
+            return rates.filter { $0 >= 1_048_576 }.count * 2 >= rates.count
+        }
+        let pagingWorsened = paging(before) == false && paging(after) == true
+        let pagingImproved = paging(before) == true && paging(after) == false
+        let improved = cpuImproved || memoryImproved || afterThermal < beforeThermal || (pressureDelta ?? 0) < 0 || pagingImproved
+        let worsened = cpuWorsened || memoryWorsened || afterThermal > beforeThermal || (pressureDelta ?? 0) > 0 || pagingWorsened
         if improved && worsened {
             outcome = .inconclusive
         } else if improved {
@@ -58,8 +91,8 @@ public struct DiagnosticEngine: Sendable {
         let detail: String
         switch outcome {
         case .improved:
-            title = "The follow-up measurements improved."
-            detail = comparisonDetail(cpuDelta: cpuDelta, headroomDelta: headroomDelta, fallback: "The evidence moved in a healthier direction.") + " This comparison does not prove what caused the change."
+            title = "Some recorded resource readings improved."
+            detail = comparisonDetail(cpuDelta: cpuDelta, headroomDelta: headroomDelta, fallback: "The evidence moved in a healthier direction.") + " This compares resources, not task responsiveness, and does not prove what caused the change."
         case .worsened:
             title = "The follow-up check was busier."
             detail = comparisonDetail(cpuDelta: cpuDelta, headroomDelta: headroomDelta, fallback: "The evidence moved away from the earlier baseline.")
@@ -80,6 +113,7 @@ public struct DiagnosticEngine: Sendable {
     }
 
     public func analyze(_ capture: DiagnosticCapture) -> DiagnosticReport {
+        if capture.samples.compactMap(\.incident).count >= 2 { return analyzeIncident(capture) }
         let usableSamples = capture.samples.filter { validCPU($0.usedCPUCores) }
         let cpuSeries = usableSamples.compactMap(\.usedCPUCores)
         guard usableSamples.count >= 2 else {
@@ -184,7 +218,7 @@ public struct DiagnosticEngine: Sendable {
         let healthy = averageCores < 0.75 && completeEvidence && (minimumHeadroom ?? 0) >= 0.15
         let finding = DiagnosticFinding(
             kind: healthy ? .healthy : .inconclusive,
-            verdict: healthy ? "No sustained slowdown was captured." : "The cause is not clear yet.",
+            verdict: healthy ? "No sustained resource pressure was captured." : "The cause is not clear yet.",
             summary: healthy
                 ? "CPU stayed low, estimated memory headroom remained available and no serious thermal state was observed."
                 : "The recording saw activity, but no single cause met the evidence threshold.",
@@ -200,6 +234,26 @@ public struct DiagnosticEngine: Sendable {
             evidence: evidence
         )
         return report(capture, cpuSeries, finding)
+    }
+
+    private func analyzeIncident(_ capture: DiagnosticCapture) -> DiagnosticReport {
+        let analysis = RootCauseAnalysis.analyze(capture)
+        let observed = Set(analysis.assessments.filter { $0.status == .observed }.map(\.id))
+        let cpuSeries = capture.samples.compactMap(\.usedCPUCores).filter { $0.isFinite && $0 >= 0 }
+        let kind: FindingKind = observed.contains("thermal") ? .thermalPressure : observed.contains("pressure") || observed.contains("memory") ? .memoryPressure : .inconclusive
+        let hardware = capture.samples.compactMap { $0.incident?.hardware }.last
+        let cpu = hardware?.cpuSensorMaximumCelsius.map { String(format: "%.1f°C", $0) } ?? "unavailable"
+        let gpu = hardware?.gpuUtilizationPercent.map { String(format: "%.0f%%", $0) } ?? "unavailable"
+        let fans = hardware?.fans?.map { fan in
+            "\(fan.name): " + (fan.rpm.map { String(format: "%.0f RPM", $0) } ?? "unavailable")
+        }.joined(separator: "; ") ?? "unavailable"
+        let finding = DiagnosticFinding(kind: kind, verdict: analysis.headline, summary: analysis.conclusion,
+            nowTitle: capture.marker == nil ? "Measured resources during this check" : "Evidence around your slow moment",
+            nowDetail: "Latest CPU sensor maximum: \(cpu). GPU: \(gpu). Fans: \(fans).",
+            whyTitle: analysis.headline, whyDetail: analysis.conclusion,
+            nextTitle: "Narrow the cause with a comparable check", nextDetail: analysis.nextCheck,
+            confidence: observed.isEmpty ? .low : .medium, evidence: evidenceItems(from: capture.samples))
+        return DiagnosticReport(capture: capture, finding: finding, cpuSeries: cpuSeries)
     }
 
     private func report(

@@ -1,29 +1,40 @@
 import Foundation
+import Combine
 @testable import PerformanceCore
 @testable import PerformanceDaddy
 import XCTest
 
 @MainActor
 final class LiveViewModelTests: XCTestCase {
+    func testUnchangedAgentPresenceDoesNotPublishAnEmptyLinkDictionary() async {
+        let model = LiveViewModel()
+        var publications = 0
+        let subscription = model.$codexSessionLinks.sink { _ in publications += 1 }
+        await model.checkAgentPresence()
+        await model.checkAgentPresence()
+        XCTAssertEqual(publications, 1, "Only the initial value should publish when presence and links are unchanged")
+        withExtendedLifetime(subscription) {}
+    }
+
     func testIndependentSurfacesPreserveForegroundModeUntilLastOneHides() {
         let model = LiveViewModel()
         let main = UUID(), wall = UUID(), menu = UUID()
-        XCTAssertEqual(model.automaticRefreshInterval, 30)
+        XCTAssertEqual(model.automaticRefreshInterval, 5)
         model.setSurfaceVisible(main, visible: true)
         model.setSurfaceVisible(wall, visible: true)
         model.setSurfaceVisible(menu, visible: true)
         model.setSurfaceVisible(main, visible: false)
         model.setSurfaceVisible(wall, visible: false)
         XCTAssertTrue(model.hasVisibleSurface)
-        XCTAssertEqual(model.automaticRefreshInterval, 10)
+        XCTAssertEqual(model.automaticRefreshInterval, 5)
         model.setSurfaceVisible(menu, visible: false)
         XCTAssertFalse(model.hasVisibleSurface)
-        XCTAssertEqual(model.automaticRefreshInterval, 30)
+        XCTAssertEqual(model.automaticRefreshInterval, 5)
         model.setSurfaceVisible(wall, visible: true)
-        XCTAssertEqual(model.automaticRefreshInterval, 10)
+        XCTAssertEqual(model.automaticRefreshInterval, 5)
     }
 
-    func testBackgroundStopsRetainingHistoryAndReopenStartsFreshRates() async throws {
+    func testBackgroundRetainsEvidenceAndReopenPreservesRateContinuity() async throws {
         let model = LiveViewModel()
         let surface = UUID()
         model.setSurfaceVisible(surface, visible: true)
@@ -36,15 +47,17 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertNotNil(model.memoryTrend(for: own))
         model.setSurfaceVisible(surface, visible: false)
         await model.refresh(background: true)
-        XCTAssertTrue(model.memoryHistory.isEmpty)
-        XCTAssertNil(model.memoryTrend(for: own))
+        XCTAssertFalse(model.memoryHistory.isEmpty)
+        XCTAssertNotNil(model.memoryTrend(for: own))
+        XCTAssertGreaterThan(model.recentEvidenceCount, 0)
         XCTAssertEqual(model.snapshot?.portsDate, .distantPast)
         model.setSurfaceVisible(surface, visible: true)
+        try await Task.sleep(for: .milliseconds(120))
         await model.refresh()
-        XCTAssertNotEqual(model.snapshot?.portsDate, .distantPast)
-        XCTAssertNil(model.snapshot?.system.memory?.rateIntervalSeconds)
-        XCTAssertNil(model.snapshot?.system.usedCPUCores)
-        XCTAssertNil(model.memoryTrend(for: own))
+        XCTAssertEqual(model.snapshot?.portsDate, .distantPast)
+        XCTAssertNotNil(model.snapshot?.system.memory?.rateIntervalSeconds)
+        XCTAssertNotNil(model.snapshot?.system.usedCPUCores)
+        XCTAssertNotNil(model.memoryTrend(for: own))
     }
 
     func testBackgroundRefreshRetainsAnExactIdentityHook() async throws {
@@ -74,7 +87,7 @@ final class LiveViewModelTests: XCTestCase {
         await model.checkAgentPresence()
         XCTAssertEqual(model.agentSignals[own.id]?.event, "Stop")
         XCTAssertEqual(model.snapshot?.portsDate, .distantPast)
-        XCTAssertTrue(model.memoryHistory.isEmpty)
+        XCTAssertFalse(model.memoryHistory.isEmpty)
     }
 
     func testHookBeforeFirstSnapshotBecomesVisibleOnlyAfterMatchingIdentityArrives() throws {
@@ -123,9 +136,9 @@ final class LiveViewModelTests: XCTestCase {
     }
 
     func testLiveRefreshCadenceHasLowOverheadFloorAndBoundedBackoff() {
-        XCTAssertEqual(LiveViewModel.refreshInterval(after: nil), 10)
-        XCTAssertEqual(LiveViewModel.refreshInterval(after: .nan), 10)
-        XCTAssertEqual(LiveViewModel.refreshInterval(after: 0.1), 10)
+        XCTAssertEqual(LiveViewModel.refreshInterval(after: nil), 5)
+        XCTAssertEqual(LiveViewModel.refreshInterval(after: .nan), 5)
+        XCTAssertEqual(LiveViewModel.refreshInterval(after: 0.1), 5)
         XCTAssertEqual(LiveViewModel.refreshInterval(after: 0.6), 12)
         XCTAssertEqual(LiveViewModel.refreshInterval(after: 10), 15)
     }
@@ -192,7 +205,9 @@ final class LiveViewModelTests: XCTestCase {
             if child.isRunning { child.terminate() }
             child.waitUntilExit()
         }
-        let model = LiveViewModel()
+        let history = FileManager.default.temporaryDirectory.appendingPathComponent("owned-child-lifecycle-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: history) }
+        let model = LiveViewModel(lifecycleStore: LifecycleHistoryStore(fileURL: history))
         await model.refresh()
         let observed = try XCTUnwrap(model.snapshot?.processes.first { $0.id.pid == child.processIdentifier })
         model.prepare([observed])

@@ -1,3 +1,5 @@
+import AppKit
+import UniformTypeIdentifiers
 import Combine
 import Foundation
 import PerformanceCore
@@ -17,6 +19,9 @@ final class DiagnosisViewModel: ObservableObject {
         }
     }
 
+    @Published var importedProfile: ImportedProfile?
+    @Published var profileImportError: String?
+    @Published private(set) var importingProfile = false
     @Published var selectedLength: CaptureLength = .quick
     @Published private(set) var report: DiagnosticReport?
     @Published private(set) var baselineReport: DiagnosticReport?
@@ -29,6 +34,15 @@ final class DiagnosisViewModel: ObservableObject {
     @Published private(set) var recentReports: [DiagnosticReport] = []
     @Published private(set) var historyStorageError: String?
     @Published private(set) var baselineStorageError: String?
+
+    private weak var liveSource: LiveViewModel?
+    func attach(to live: LiveViewModel) { liveSource = live }
+
+    func markSlowMoment() {
+        guard !isRecording else { return }
+        let marker = IncidentMarker(date: Date(), symptom: "Whole Mac felt slow", foreground: liveSource?.lastExternalApp)
+        beginRecording(comparingTo: nil, fromSavedBaseline: false, marker: marker)
+    }
 
     private let recorder: DiagnosticRecorder
     private let engine = DiagnosticEngine()
@@ -64,6 +78,36 @@ final class DiagnosisViewModel: ObservableObject {
         return "No diagnosis recorded yet"
     }
 
+    func importProfile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.plainText, .json]; panel.allowsMultipleSelection = false
+        panel.message = "Import a saved Activity Monitor Sample Process report or sampled speedscope JSON. The file stays local."
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                self.importingProfile = true; self.profileImportError = nil
+                defer { self.importingProfile = false }
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                do { self.importedProfile = try await Task.detached(priority: .utility) { try ProfileImporter.read(url) }.value }
+                catch { self.profileImportError = error.localizedDescription }
+            }
+        }
+    }
+
+    func exportTrace() {
+        guard let report else { return }
+        let panel = NSSavePanel(); panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "PerformanceDaddy-incident.json"
+        panel.message = "Save local counters and workload names as Chrome trace-event JSON for Perfetto. This is not an OS scheduler trace."
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            do { try IncidentTraceExport.data(report.capture).write(to: url, options: .atomic) }
+            catch { Task { @MainActor in self?.profileImportError = "Trace export failed: \(error.localizedDescription)" } }
+        }
+    }
+
     func loadHistory() async {
         guard !historyLoaded else { return }
         historyLoaded = true
@@ -95,7 +139,7 @@ final class DiagnosisViewModel: ObservableObject {
         beginRecording(comparingTo: report, fromSavedBaseline: false)
     }
 
-    private func beginRecording(comparingTo baseline: DiagnosticReport?, fromSavedBaseline: Bool) {
+    private func beginRecording(comparingTo baseline: DiagnosticReport?, fromSavedBaseline: Bool, marker: IncidentMarker? = nil) {
         recordingTask?.cancel()
         let previousReport = report
         baselineReport = baseline
@@ -105,13 +149,19 @@ final class DiagnosisViewModel: ObservableObject {
         progress = 0
         errorMessage = nil
         report = nil
-        let duration = selectedLength.seconds
+        let duration = marker == nil ? selectedLength.seconds : 30
 
         recordingTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let capture = try await recorder.record(duration: duration) { [weak self] value in
+                let progress: @Sendable (Double) -> Void = { [weak self] value in
                     Task { @MainActor in self?.progress = value }
+                }
+                let capture: DiagnosticCapture
+                if let liveSource {
+                    capture = try await liveSource.capture(duration: duration, marker: marker, progress: progress)
+                } else {
+                    capture = try await recorder.record(duration: duration, progress: progress)
                 }
                 let nextReport = engine.analyze(capture)
                 accept(nextReport)

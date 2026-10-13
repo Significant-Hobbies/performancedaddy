@@ -4,6 +4,9 @@ import SwiftUI
 enum PerformanceDaddyMain {
     @MainActor
     static func main() {
+        if CommandLine.arguments.dropFirst().first == "--capture-diagnostic" {
+            PerformanceDiagnosticCommand.run(arguments: Array(CommandLine.arguments.dropFirst()))
+        }
         if CommandLine.arguments.contains("--check-ui-resources") {
             guard PerformanceUIResources.loaded else {
                 FileHandle.standardError.write(Data("PerformanceDaddy UI resources missing or invalid\n".utf8))
@@ -72,6 +75,7 @@ struct PerformanceDaddyApp: App {
     /// The menu bar label lives for the whole session, so quitting from the
     /// menu or Dock reviews work even when the main window was never opened.
     private func reviewActiveWorkBeforeQuit() {
+        diagnosis.attach(to: live)
         delegate.activeWork = { [diagnosis, live] in
             PerformanceActiveWork.description(isRecording: diagnosis.isRecording, performingAction: live.performingAction)
         }

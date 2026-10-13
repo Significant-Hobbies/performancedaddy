@@ -116,12 +116,18 @@ public struct FanInvestigation: Equatable, Sendable {
             return fraction > 1.1 ? "Process and system CPU intervals disagree; share unavailable." :
                 "Recorded workloads account for about \(Int(min(1, max(0, fraction)) * 100))% of system CPU. The remainder is unattributed, including unreadable or omitted processes and kernel work."
         } ?? "System CPU unavailable; workload share cannot be calculated."
+        let hardware = samples.compactMap { $0.incident?.hardware }
+        let measuredFans = hardware.compactMap(\.fans).flatMap { $0 }.contains { $0.rpm != nil }
+        let gpu = hardware.compactMap(\.gpuUtilizationPercent)
         let heatCoincidence = cpuSamples.filter { ($0.usedCPUCores ?? 0) >= 1 && rank($0.thermal) >= 1 }.count
         var links = [
             primary.map { "\($0.name) → CPU: measured \(String(format: "%.2f", $0.recordedAverageCores)) cores on average. \($0.association)." } ?? "Workload → CPU: no readable positive contributor identified.",
             heatCoincidence > 0 ? "CPU → thermal pressure: elevated CPU and thermal state overlapped in \(heatCoincidence) samples. This association does not prove which workload generated the heat." : "CPU → thermal pressure: no overlapping elevated readings established this link. Earlier heat and unmeasured GPU work remain unresolved.",
-            "Thermal pressure → fan noise: unresolved. Fan RPM and noise changes were not measured."
+            measuredFans ? "Fan RPM was measured. Noise, lag and the physical source of heat still need correlation with a comparable follow-up." : "Thermal pressure → fan noise: unresolved. Fan RPM and noise changes were not measured."
         ]
+        if let peakGPU = gpu.max() {
+            links.append("GPU driver activity peaked at \(String(format: "%.0f%%", peakGPU)). This measures device activity, not app ownership or a proven fan cause.")
+        }
         let pagingSamples = samples.filter {
             guard let memory = $0.memory else { return false }
             return [memory.swapInBytesPerSecond, memory.swapOutBytesPerSecond].contains { rate in
@@ -146,6 +152,9 @@ public struct FanInvestigation: Equatable, Sendable {
         } else if peakThermal == .serious || peakThermal == .critical {
             headline = "Thermal pressure was observed; its source is unresolved."
             explanation = "macOS reported significant thermal pressure. The recording does not identify which workload or physical condition caused it."
+        } else if gpu.filter({ $0 >= 70 }).count >= 2 && gpu.filter({ $0 >= 70 }).count * 2 >= samples.count {
+            headline = "GPU activity is a possible heat contributor."
+            explanation = "Repeated device GPU activity was recorded. Review the same foreground task alongside GPU readings and fan RPM; the responsible app and cause of the delay remain unproven."
         } else if !covered {
             headline = "More evidence is needed to explain the fan."
             explanation = "A continuous CPU window of at least ten seconds with at least 80% readable coverage is needed. Missing readings never mean idle."
@@ -156,14 +165,14 @@ public struct FanInvestigation: Equatable, Sendable {
         return Self(headline: headline, explanation: explanation,
                     confidence: strong ? .medium : .low,
                     nextCheck: trend == .settling ?
-                        "CPU work declined during this capture. Listen for whether the fan settles too, then record another equal-length check. Fan speed was not measured." :
+                        measuredFans ? "CPU work declined. Repeat an equal-length check and compare the same fan's RPM, GPU activity and the reported delay." : "CPU work declined during this capture. Listen for whether the fan settles too, then record another equal-length check. Fan speed was not measured." :
                         "Record two minutes while the fan is loud. If you choose to pause a named workload, save your work first, then repeat an equal-length capture and note whether the fan noise changes.",
                     sampleCount: samples.count, cpuSampleCount: cpu.count,
                     averageCPUCores: mean, peakCPUCores: cpu.max(), sustainedCPU: sustained,
                     cpuTrend: trend, thermalSampleCount: thermal.count, peakThermal: peakThermal,
                     powerLimitSampleCount: powerLimits,
                     constrainedPowerSampleCount: constrained, contributors: contributors,
-                    limitations: "Fan noise is user-reported. Fan RPM, raw temperature and GPU activity are not measured. Power allowances are OS constraints, not clock measurements or proof of thermal throttling. App and agent ownership uses executable metadata and parent links, not authenticated identity. Up to 32 workload groups are saved; missing groups never prove idle and averages are lower bounds. Legacy recordings only contain process names. No causal intervention or fan improvement was measured.",
+                    limitations: (hardware.isEmpty ? "Fan noise is user-reported. Fan RPM, raw temperature and GPU activity are not measured. " : "Fan noise is user-reported. Available fan RPM, sensor maxima and GPU driver counters were recorded; missing hardware fields remain unavailable. These undocumented driver readings vary by hardware and macOS version and do not prove a fan or lag cause. ") + "Power allowances are OS constraints, not clock measurements or proof of thermal throttling. App and agent ownership uses executable metadata and parent links, not authenticated identity. Up to 32 workload groups are saved; missing groups never prove idle and averages are lower bounds. Legacy recordings only contain process names. No causal intervention or fan improvement was measured.",
                     workloadCoverage: workloadCoverage, evidenceLinks: links)
     }
 

@@ -8,6 +8,12 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
 
 ## Daily use
 
+- **Feels slow now:** mark an incident, retain up to two minutes of available preceding observations, then record another 30 seconds. Recent observations are bounded to 30 minutes/400 samples in memory; completed incidents join the ten local recent runs. Missing history cannot be reconstructed. The last external app is context, not a proven cause.
+- **Richer diagnosis:** recordings use the same native census as the live view and retain macOS memory pressure, workload footprint, identity-safe disk-I/O rates, project basenames, process-arrival observations and observer overhead. CPU, memory and I/O leaders remain visible separately. Polling is not a complete execution-event log; I/O throughput is not disk latency.
+- **Measured fans and GPU:** read-only SMC/IORegistry adapters expose available fan RPM/reported maxima, observed CPU/GPU sensor maxima and device GPU utilization. These undocumented driver fields vary by hardware/macOS; absent values remain unavailable. No fan control, helper, shell monitoring command or external runtime dependency is added.
+- **Import stacks / export trace:** Diagnose imports saved Activity Monitor Sample Process text and sampled speedscope JSON locally, with bounded parsing. Event-loop idle waits are distinguished from synchronization/I/O wait evidence; stacks do not prove a hang or measure CPU/response latency. Explicit trace export saves Chrome trace-event JSON for tools such as Perfetto; it is not a scheduler trace. Other formats require conversion and are rejected explicitly.
+
+
 - **Understand a process:** click **Running** to sort duration; it remains visible
   while inspecting a row. **What is this?** gives app-path association, observed
   ancestor-app context, documented role hints for 37 macOS services and an explicit

@@ -54,6 +54,7 @@ def main():
     (contents / "Resources").mkdir()
     shutil.copy2(binary, contents / "MacOS/PerformanceDaddy")
     package_resources.copy_resources(products, contents / "Resources")
+    shutil.copy2(ROOT / "ThirdPartyNotices.md", contents / "Resources/ThirdPartyNotices.md")
     shutil.copy2(ROOT / "Support/PerformanceDaddy.icns", contents / "Resources/PerformanceDaddy.icns")
 
     info = plistlib.loads((ROOT / "Support/Info.plist").read_bytes())

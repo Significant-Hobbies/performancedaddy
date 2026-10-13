@@ -10,6 +10,11 @@ struct DashboardView: View {
     @State private var showingDeleteBaseline = false
     @State private var showingReplaceBaseline = false
 
+    init(model: DiagnosisViewModel, live: LiveViewModel, initialDestination: String = "Processes") {
+        self.model = model; self.live = live
+        _destination = State(initialValue: initialDestination)
+    }
+
     var body: some View {
         NavigationSplitView {
             sidebar
@@ -24,12 +29,14 @@ struct DashboardView: View {
                 } else if destination == "App access" {
                     AppAccessAuditView(live: live)
                 } else if destination == "Fans & heat" {
-                    FanInvestigationView(model: model)
+                    FanInvestigationView(model: model, hardware: live.latestEvidence?.incident?.hardware)
                 } else {
                     VStack(spacing: 0) {
                         HStack {
                             SMDisplay("Root-cause analysis", size: 17).accessibilityLabel("Root-cause analysis")
                             Spacer()
+                            Button("import stacks", action: model.importProfile).disabled(model.importingProfile)
+                            if model.report != nil { Button("export trace", action: model.exportTrace) }
                             Menu("Recent runs (\(model.recentReports.count))") {
                                 ForEach(Array(model.recentReports.enumerated()), id: \.offset) { _, report in
                                     Button {
@@ -74,6 +81,11 @@ struct DashboardView: View {
                 }
             }
         }
+        .sheet(item: $model.importedProfile) { ImportedProfileView(profile: $0) }
+        .alert("Profile needs attention", isPresented: Binding(get: { model.profileImportError != nil }, set: { if !$0 { model.profileImportError = nil } })) {
+            Button("OK") { model.profileImportError = nil }
+        } message: { Text(model.profileImportError ?? "") }
+        .onChange(of: destination, initial: true) { _, next in live.inspectPorts = next == "Ports" }
         .performanceTheme(PerformanceTheme.palette)
         .buttonStyle(DaddyButtonStyle())
         .toolbar(.hidden, for: .windowToolbar)
@@ -116,11 +128,11 @@ struct DashboardView: View {
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .tracking(-0.6).lineLimit(1).minimumScaleFactor(0.8)
             }.padding(.top, 20).padding(.bottom, 10)
-            Button { destination = "Diagnose" } label: {
-                Label("diagnose slowdown", systemImage: "waveform.path.ecg").accessibilityLabel("Diagnose slowdown")
+            Button { destination = "Diagnose"; model.markSlowMoment() } label: {
+                Label("feels slow now", systemImage: "waveform.path.ecg").accessibilityLabel("Feels slow now")
                     .frame(maxWidth: .infinity).frame(height: 28)
             }.buttonStyle(DaddyButtonStyle(prominent: true))
-                .help("Open a timed, read-only CPU, memory and thermal diagnostic. Recording starts only when you choose Start.")
+                .help("Mark this moment, keep up to two minutes of preceding observations, and record another 30 seconds. Read-only.")
             VStack(alignment: .leading, spacing: 5) {
                 navigationHeading("LIVE")
                 ForEach(LivePage.allCases) { page in
@@ -135,7 +147,7 @@ struct DashboardView: View {
             Spacer(minLength: 12)
             VStack(alignment: .leading, spacing: 7) {
                 Text("On your Mac. Under your control.").font(.caption)
-                Text("Nothing stops until you review it.").font(.caption)
+                Text("\(live.recentEvidenceCount) recent observations in memory. Nothing stops until you review it.").font(.caption)
             }
             .foregroundStyle(PerformanceTheme.secondaryInk)
         }
@@ -351,6 +363,15 @@ private struct ReportView: View {
                 }
 
                 verdict
+                if let marker = report.capture.marker {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Slow moment marked at \(marker.date.formatted(date: .omitted, time: .standard))").font(.headline)
+                        Text("User-reported slowness. \(report.capture.samples.filter { $0.timestamp <= marker.date }.count) preceding observations retained; earlier gaps cannot be reconstructed.").font(.callout)
+                        if let app = marker.foreground {
+                            Text("Last external app observed: \(app.name), at \(app.observedAt.formatted(date: .omitted, time: .standard)). This is context, not proof of the cause.").font(.caption)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
 
                 Text("Recorded \(report.capture.startedAt.formatted(date: .abbreviated, time: .standard)) – \(report.capture.endedAt.formatted(date: .omitted, time: .standard)) · \(durationLabel) · saved capture")
                     .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
@@ -381,7 +402,7 @@ private struct ReportView: View {
 
                 TriageBand(label: "WHY", subtitle: "Root-cause analysis") {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Assessment across five evidence domains")
+                        Text("Assessment across \(report.rootCauseAnalysis.assessments.count) evidence domains")
                             .font(.title2.bold())
                             .foregroundStyle(PerformanceTheme.ink)
                         Text(report.rootCauseAnalysis.coverage)
@@ -400,7 +421,7 @@ private struct ReportView: View {
                             }.frame(maxWidth: .infinity, alignment: .leading)
                             Divider()
                         }
-                        SMDisplay("Measured CPU contributors", size: 17).accessibilityLabel("Measured CPU contributors").accessibilityAddTraits(.isHeader)
+                        SMDisplay("Measured workload contributors", size: 17).accessibilityLabel("Measured workload contributors").accessibilityAddTraits(.isHeader)
                         if report.rootCauseAnalysis.contributors.isEmpty {
                             Text("No positive readable process CPU rows were captured. This does not prove that every process was idle.")
                                 .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
