@@ -19,6 +19,7 @@ public struct RootCauseAnalysis: Equatable, Sendable {
         if signals.contains("thermal") { return "Thermal pressure needs investigation." }
         if signals.contains("memory") && signals.contains("paging") { return "Memory demand and paging need investigation." }
         if signals.contains("pressure") { return "macOS memory pressure needs investigation." }
+        if signals.contains("app_response") { return "App service response needs investigation." }
         if signals.contains("gpu") { return "GPU activity needs investigation." }
         if signals.contains("cpu") { return "CPU work is the strongest recorded signal." }
         if signals.contains("memory") { return "Low memory headroom needs a closer check." }
@@ -76,6 +77,18 @@ public struct RootCauseAnalysis: Equatable, Sendable {
                   limitation: "Below 20 GiB is a capacity review threshold, not proof of slow storage. Disk latency and throughput are not captured here."),
         ]
         let incidents = samples.compactMap(\.incident)
+        if samples.contains(where: { $0.responsiveness != nil }) {
+            let response = ResponsivenessSummary.analyze(capture)
+            let slow = samples.compactMap { $0.responsiveness?.appProbe }.filter { $0.status == .replied && ($0.milliseconds ?? 0) >= 100 }.count
+            assessments.append(.init(id: "app_response", title: "Last-used app service response",
+                status: status(slow >= 2 || response.noReplyCount >= 2, response.replyCount), evidence: response.details,
+                limitation: "100 ms is an investigation threshold for an Accessibility request, not an input-latency standard. Messaging failures are not proof of a hang; a quick reply does not prove rendering is fast."))
+            let delayed = samples.compactMap { $0.responsiveness?.heartbeatMaximumMilliseconds }.filter { $0 >= 100 }.count
+            assessments.append(.init(id: "monitor_response", title: "PerformanceDaddy queue response",
+                status: status(delayed > 0, samples.filter { ($0.responsiveness?.heartbeatCount ?? 0) > 0 }.count),
+                evidence: "\(delayed) recorded windows contained a main-queue acknowledgement delayed by at least 100 ms.",
+                limitation: "Only PerformanceDaddy's queue is measured. Its own work or scheduling can delay it; this cannot establish whole-Mac or other-app responsiveness."))
+        }
         if !incidents.isEmpty {
             let pressures = incidents.filter { $0.pressure == "Warning" || $0.pressure == "Critical" }.count
             assessments.append(.init(id: "pressure", title: "macOS memory pressure", status: status(repeated(pressures) || incidents.contains { $0.pressure == "Critical" }, incidents.filter { ["Normal", "Warning", "Critical"].contains($0.pressure) }.count),

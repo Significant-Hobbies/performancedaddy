@@ -76,12 +76,21 @@ struct DashboardView: View {
                                     .accessibilityLabel(model.baselineStorageError ?? "Known-good baseline storage unavailable")
                             }
                         }.padding(.horizontal, 28).padding(.top, 16)
+                        AppResponseSettingsView(live: live).padding(.horizontal, 28).padding(.vertical, 10)
+                        if let error = model.errorMessage, model.report != nil {
+                            Text(error).font(.callout).foregroundStyle(PerformanceTheme.coral).padding(.horizontal, 28)
+                        }
                         diagnosisContent
                     }
                 }
             }
         }
         .sheet(item: $model.importedProfile) { ImportedProfileView(profile: $0) }
+        .sheet(isPresented: $model.preparingFollowUp) {
+            if let report = model.report {
+                FollowUpPreparationView(report: report, onCancel: { model.preparingFollowUp = false }, onRecord: model.recordFollowUp)
+            }
+        }
         .alert("Profile needs attention", isPresented: Binding(get: { model.profileImportError != nil }, set: { if !$0 { model.profileImportError = nil } })) {
             Button("OK") { model.profileImportError = nil }
         } message: { Text(model.profileImportError ?? "") }
@@ -133,6 +142,9 @@ struct DashboardView: View {
                     .frame(maxWidth: .infinity).frame(height: 28)
             }.buttonStyle(DaddyButtonStyle(prominent: true))
                 .help("Mark this moment, keep up to two minutes of preceding observations, and record another 30 seconds. Read-only.")
+            Picker("Symptom", selection: $model.selectedSymptom) {
+                ForEach(ReportedSymptom.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }.font(.caption).disabled(model.isRecording)
             VStack(alignment: .leading, spacing: 5) {
                 navigationHeading("LIVE")
                 ForEach(LivePage.allCases) { page in
@@ -193,6 +205,11 @@ struct DashboardView: View {
                     }
                 },
                 onVerify: model.performRecommendedAction,
+                onInspect: {
+                    live.search = IncidentExplanation.analyze(report.capture).reviewSearch ?? ""
+                    destination = "Processes"
+                },
+                onReportedOutcome: model.reportSymptomOutcome,
                 onNewCheck: model.clearReport
             )
         } else {
@@ -348,9 +365,12 @@ private struct ReportView: View {
     let savedBaseline: DiagnosticReport?
     let onSaveBaseline: () -> Void
     let onVerify: () -> Void
+    var onInspect: () -> Void = {}
+    var onReportedOutcome: (ReportedOutcome) -> Void = { _ in }
     let onNewCheck: () -> Void
 
     private var finding: DiagnosticFinding { report.finding }
+    private var explanation: IncidentExplanation { .analyze(report.capture) }
 
     var body: some View {
         ScrollView {
@@ -366,7 +386,7 @@ private struct ReportView: View {
                 if let marker = report.capture.marker {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Slow moment marked at \(marker.date.formatted(date: .omitted, time: .standard))").font(.headline)
-                        Text("User-reported slowness. \(report.capture.samples.filter { $0.timestamp <= marker.date }.count) preceding observations retained; earlier gaps cannot be reconstructed.").font(.callout)
+                        Text("You reported: \(marker.symptom). \(report.capture.samples.filter { $0.timestamp <= marker.date }.count) preceding observations retained; earlier gaps cannot be reconstructed.").font(.callout)
                         if let app = marker.foreground {
                             Text("Last external app observed: \(app.name), at \(app.observedAt.formatted(date: .omitted, time: .standard)). This is context, not proof of the cause.").font(.caption)
                         }
@@ -381,27 +401,16 @@ private struct ReportView: View {
                     comparisonBand(baseline: baseline, comparison: comparison)
                 }
 
-                TriageBand(label: "NOW", subtitle: "During this recording") {
-                    VStack(alignment: .leading, spacing: 13) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(finding.nowTitle)
-                                .font(.title2.bold())
-                                .foregroundStyle(PerformanceTheme.ink)
-                            Spacer()
-                            Text(durationLabel)
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                        }
-                        Sparkline(values: report.cpuSeries)
-                            .frame(height: 82)
-                        Text(finding.nowDetail)
-                            .font(.callout)
-                            .foregroundStyle(PerformanceTheme.secondaryInk)
-                    }
+                if report.capture.samples.contains(where: { $0.responsiveness != nil }) {
+                    ResponsivenessReportView(capture: report.capture)
                 }
 
                 TriageBand(label: "WHY", subtitle: "Root-cause analysis") {
                     VStack(alignment: .leading, spacing: 16) {
+                        Text(explanation.window).font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                        Text(explanation.candidate).font(.body)
+                        Text(explanation.unknown).font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
+                        DisclosureGroup("All measured domains and workload contributors") {
                         Text("Assessment across \(report.rootCauseAnalysis.assessments.count) evidence domains")
                             .font(.title2.bold())
                             .foregroundStyle(PerformanceTheme.ink)
@@ -432,6 +441,7 @@ private struct ReportView: View {
                             }
                         }
                         Text(report.rootCauseAnalysis.limitations).font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                        }
                     }
                 }
 
@@ -440,13 +450,16 @@ private struct ReportView: View {
                         Text("Next check to narrow the cause")
                             .font(.title2.bold())
                             .foregroundStyle(PerformanceTheme.ink)
-                        Text(report.rootCauseAnalysis.nextCheck)
+                        Text(explanation.nextCheck)
                             .font(.body)
                             .foregroundStyle(PerformanceTheme.secondaryInk)
                         HStack(spacing: 12) {
-                            Button(recommendedActionLabel.lowercased(), action: onVerify)
-                                .accessibilityLabel(recommendedActionLabel)
+                            Button("record follow-up", action: onVerify)
+                                .accessibilityLabel("Record follow-up")
                                 .buttonStyle(PrimaryActionButtonStyle())
+                            if explanation.reviewSearch != nil {
+                                Button("review workload", action: onInspect)
+                            }
                             Button("new check", action: onNewCheck).accessibilityLabel("New check")
                                 .buttonStyle(.bordered)
                                 .controlSize(.large)
@@ -465,6 +478,25 @@ private struct ReportView: View {
                         .font(.caption.weight(.medium))
                     }
                 }
+                TriageBand(label: "NOW", subtitle: "During this recording") {
+                    VStack(alignment: .leading, spacing: 13) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(finding.nowTitle)
+                                .font(.title2.bold())
+                                .foregroundStyle(PerformanceTheme.ink)
+                            Spacer()
+                            Text(durationLabel)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        Sparkline(values: report.cpuSeries)
+                            .frame(height: 82)
+                        Text(finding.nowDetail)
+                            .font(.callout)
+                            .foregroundStyle(PerformanceTheme.secondaryInk)
+                    }
+                }
+
             }
             .padding(28)
             .frame(maxWidth: 1_080)
@@ -479,11 +511,11 @@ private struct ReportView: View {
                 .frame(width: 28, height: 28)
                 .padding(.top, 8)
             VStack(alignment: .leading, spacing: 7) {
-                Text(report.rootCauseAnalysis.headline)
-                    .font(.custom(PerformanceTheme.palette.displayFont, size: 34).weight(.semibold))
+                Text(explanation.observed)
+                    .font(.title2.weight(.semibold))
                     .foregroundStyle(PerformanceTheme.ink)
                     .accessibilityAddTraits(.isHeader)
-                Text(report.rootCauseAnalysis.conclusion)
+                Text("\(explanation.window). This report connects observed activity to the incident; it does not establish causation.")
                     .font(.body)
                     .foregroundStyle(PerformanceTheme.secondaryInk)
                 Label("Measured signals · root cause not confirmed", systemImage: "info.circle")
@@ -503,7 +535,7 @@ private struct ReportView: View {
     }
 
     private func comparisonBand(baseline: DiagnosticReport, comparison: DiagnosticComparison) -> some View {
-        TriageBand(label: "RESULT", subtitle: comparisonFromSavedBaseline ? "Against your saved baseline" : "What changed after your action") {
+        TriageBand(label: "RESULT", subtitle: comparisonFromSavedBaseline ? "Against your saved baseline" : "Resources, app response and your reported symptom") {
             VStack(alignment: .leading, spacing: 12) {
                 Label(comparison.title, systemImage: comparisonIcon)
                     .font(.title2.bold())
@@ -512,6 +544,20 @@ private struct ReportView: View {
                 Text(comparison.detail)
                     .font(.body)
                     .foregroundStyle(PerformanceTheme.secondaryInk)
+                if let followUp = report.capture.followUp {
+                    Divider()
+                    Text("Task: \(followUp.task)").font(.headline)
+                    Text("Declared change: \(followUp.change.rawValue)\(followUp.changeDetail.isEmpty ? "" : " · " + followUp.changeDetail). PerformanceDaddy did not perform or verify this change.")
+                        .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
+                    Picker("How did the same action feel?", selection: Binding(get: { followUp.outcome }, set: { onReportedOutcome($0) })) {
+                        ForEach(ReportedOutcome.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    Text("Your reported symptom: \(followUp.outcome.rawValue). This is separate from the measured resource and app-service results.")
+                        .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                    let response = followUp.compareResponsiveness(report.capture)
+                    Text(response.title).font(.headline)
+                    Text(response.detail).font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
+                }
                 Text(comparisonFromSavedBaseline
                      ? "Compared with your saved \(durationLabel(for: baseline)) capture from \(baseline.capture.startedAt.formatted(date: .abbreviated, time: .shortened)). Different workloads can make this inconclusive."
                      : "Compared with the \(durationLabel(for: baseline)) baseline. Correlation does not prove that the action alone caused the change.")
@@ -545,16 +591,6 @@ private struct ReportView: View {
         case .improved: PerformanceTheme.mintInk
         case .worsened: PerformanceTheme.coral
         default: PerformanceTheme.action
-        }
-    }
-
-    private var recommendedActionLabel: String {
-        switch finding.kind {
-        case .temporaryBuildLoad: "Verify after the build"
-        case .memoryPressure: "Verify after closing an app"
-        case .thermalPressure: "Verify after cooling"
-        case .processLoad: "Verify after reviewing the app"
-        case .healthy, .inconclusive: "Capture a longer check"
         }
     }
 
