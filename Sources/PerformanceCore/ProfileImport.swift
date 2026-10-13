@@ -169,6 +169,11 @@ public enum IncidentTraceExport {
             counter("GPU device utilization percent", sample.incident?.hardware?.gpuUtilizationPercent, sample.timestamp)
             counter("CPU sensor maximum Celsius", sample.incident?.hardware?.cpuSensorMaximumCelsius, sample.timestamp)
             counter("Observer CPU cores", sample.samplerCPUCores, sample.timestamp)
+            counter("PerformanceDaddy main-queue peak ms", sample.responsiveness?.heartbeatMaximumMilliseconds, sample.timestamp)
+            counter("PerformanceDaddy local input dispatch peak ms", sample.responsiveness?.localEventMaximumMilliseconds, sample.timestamp)
+            if let probe = sample.responsiveness?.appProbe, probe.status == .replied {
+                counter("App accessibility-service reply ms", probe.milliseconds, probe.date)
+            }
             for fan in sample.incident?.hardware?.fans ?? [] { counter(fan.name + " RPM", fan.rpm, sample.timestamp) }
             for workload in sample.incident?.workloads ?? [] {
                 guard let track = tracks[workload.id] else { continue }
@@ -183,6 +188,6 @@ public enum IncidentTraceExport {
         if let marker = capture.marker {
             events.append(["name": marker.symptom, "ph": "i", "s": "g", "pid": 1, "tid": 1, "ts": marker.date.timeIntervalSince1970 * 1e6])
         }
-        return try JSONSerialization.data(withJSONObject: ["traceEvents": events, "displayTimeUnit": "ms", "metadata": ["source": "PerformanceDaddy native observations", "clock": "Unix epoch microseconds", "limitations": "Sampled counters; no scheduler trace or measured input latency. Missing readings remain omitted."]], options: [.sortedKeys])
+        return try JSONSerialization.data(withJSONObject: ["traceEvents": events, "displayTimeUnit": "ms", "metadata": ["source": "PerformanceDaddy native observations", "clock": "Unix epoch microseconds", "limitations": "Sampled counters and scoped dispatch/service latency; no OS scheduler trace or input-to-display measurement. Missing readings remain omitted."]], options: [.sortedKeys])
     }
 }

@@ -15,14 +15,18 @@ import XCTest
         let samples = (0..<4).map { i in
             let time = date.addingTimeInterval(Double(i) * 5)
             let base = SystemSample(timestamp: time, usedCPUCores: 4, memoryHeadroomRatio: 0.44, swapUsedBytes: 0, diskFreeBytes: 200000000000, thermal: .nominal, processes: [])
-            return builder.sample(LiveSnapshot(date: time, processes: [agent], system: base, pressure: "Normal", compressed: nil, unavailableProcesses: 2, portsDate: .distantPast, scanSeconds: 0.03, hardware: hardware))
+            return builder.sample(LiveSnapshot(date: time, processes: [agent], system: base, pressure: "Normal", compressed: nil, unavailableProcesses: 2, portsDate: .distantPast, scanSeconds: 0.03, hardware: hardware)).withResponsiveness(.init(windowStartedAt: time.addingTimeInterval(-5), windowEndedAt: time,
+                heartbeatCount: 5, heartbeatMaximumMilliseconds: 145, localEventCount: 3, localEventMaximumMilliseconds: 86,
+                appProbe: .init(date: time, app: "Xcode", bundleID: "com.apple.dt.Xcode", version: "27", status: .replied, milliseconds: 138)))
         }
         let capture = DiagnosticCapture(startedAt: date, endedAt: date.addingTimeInterval(15), samples: samples, isFixture: true, marker: .init(date: date.addingTimeInterval(5), symptom: "Whole Mac felt slow", foreground: .init(name: "Chrome", bundleID: "com.google.Chrome", observedAt: date)))
         let profile = try ProfileImporter.parse(Data("Call graph:\n    10 Thread_0: Main Thread\n    + 10 applicationAction\n    + ! 10 semaphore_wait_trap\n".utf8))
+        let followUp = capture.withFollowUp(.init(baseline: .init(capture), task: "Switch between Safari and Xcode", change: .paused, changeDetail: "Paused the project test runner", sameTaskConfirmed: true, outcome: .better))
         for width: CGFloat in [980,1180,1440] {
             let model = DiagnosisViewModel(); model.review(DiagnosticEngine().analyze(capture))
             let live = LiveViewModel()
-            let views: [(String, AnyView)] = [("incident",AnyView(DashboardView(model: model, live: live, initialDestination: "Diagnose"))), ("hardware",AnyView(FanInvestigationView(model: model, hardware: hardware))), ("stacks",AnyView(ImportedProfileView(profile: profile)))]
+            let after = DiagnosisViewModel(); after.review(DiagnosticEngine().analyze(followUp))
+            let views: [(String, AnyView)] = [("incident",AnyView(DashboardView(model: model, live: live, initialDestination: "Diagnose"))), ("follow-up",AnyView(DashboardView(model: after, live: live, initialDestination: "Diagnose"))), ("prepare",AnyView(FollowUpPreparationView(report: DiagnosticEngine().analyze(capture), onCancel: {}, onRecord: { _,_,_,_ in }))), ("hardware",AnyView(FanInvestigationView(model: model, hardware: hardware))), ("stacks",AnyView(ImportedProfileView(profile: profile)))]
             for (name,root) in views {
                 let view = NSHostingView(rootView: root.frame(width: width,height: 900).performanceTheme(PerformanceTheme.palette).buttonStyle(DaddyButtonStyle()))
                 view.frame = NSRect(x: 0,y: 0,width: width,height: 900)

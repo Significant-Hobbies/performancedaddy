@@ -9,6 +9,9 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
 ## Daily use
 
 - **Feels slow now:** mark an incident, retain up to two minutes of available preceding observations, then record another 30 seconds. Recent observations are bounded to 30 minutes/400 samples in memory; completed incidents join the ten local recent runs. Missing history cannot be reconstructed. The last external app is context, not a proven cause.
+- **Measured responsiveness:** a one-per-second, single-flight heartbeat measures PerformanceDaddy's main-queue acknowledgement delay. Local input dispatch timing retains counts and delays only, never input contents. These cover PerformanceDaddy, not other apps' completed interactions. In Diagnose, the optional app-response probe reads only the last-used app's Accessibility role, at most every five seconds with a 250 ms per-element messaging timeout. Enable it explicitly and grant macOS Accessibility access if desired. Replies measure the app's Accessibility service; messaging failures are not proof of a beachball, and quick replies do not prove smooth rendering.
+- **Incident explanation:** observations within ten seconds of a slow-moment marker identify a candidate workload only when a matching resource signal exists. Readable idle memory owners remain candidates during OS memory pressure. Unknown ownership and cause remain explicit.
+- **Record follow-up:** name the same action to repeat and the change you made yourself, then record a matching post-marker window. Report whether it felt better afterwards. The result keeps user-reported symptoms, resource changes and app-service timing separate; mixed app/version, power mode, missing or sparse probes, censored replies and differing windows prevent a latency improvement claim. The linked baseline and declared change survive reopening the report and recent-run rotation. No process or setting is changed by this workflow.
 - **Richer diagnosis:** recordings use the same native census as the live view and retain macOS memory pressure, workload footprint, identity-safe disk-I/O rates, project basenames, process-arrival observations and observer overhead. CPU, memory and I/O leaders remain visible separately. Polling is not a complete execution-event log; I/O throughput is not disk latency.
 - **Measured fans and GPU:** read-only SMC/IORegistry adapters expose available fan RPM/reported maxima, observed CPU/GPU sensor maxima and device GPU utilization. These undocumented driver fields vary by hardware/macOS; absent values remain unavailable. No fan control, helper, shell monitoring command or external runtime dependency is added.
 - **Import stacks / export trace:** Diagnose imports saved Activity Monitor Sample Process text and sampled speedscope JSON locally, with bounded parsing. Event-loop idle waits are distinguished from synchronization/I/O wait evidence; stacks do not prove a hang or measure CPU/response latency. Explicit trace export saves Chrome trace-event JSON for tools such as Perfetto; it is not a scheduler trace. Other formats require conversion and are rejected explicitly.
@@ -231,7 +234,8 @@ core. Ports may be unavailable due to permissions, process exits or bounded
 scan limits; a non-loopback bind alone does not establish network reachability.
 
 Repeatable workflow experiments, compact derived history with sample expiry,
-disk/GPU/network throughput and StorageDaddy handoff remain future work.
+storage latency, per-app GPU attribution, network throughput and StorageDaddy
+handoff remain future work.
 
 Before/after diagnosis rejects insufficient or mismatched evidence and reports
 mixed resource changes as inconclusive. Allocated swap alone is not a diagnosis
@@ -244,10 +248,11 @@ Rates reset after pause/resume, failed reads and long gaps. Memory categories
 overlap; swap rates describe VM pages, not physical disk throughput. These values
 are included explicitly in redacted snapshot exports.
 
-Raw fan RPM and temperature readings appear as unavailable because this release
-does not use unsupported private SMC interfaces. The supported signal is Apple's
-system thermal state plus public power constraints. PerformanceDaddy does not
-install a helper or change fan settings.
+Available fan RPM, reported fan maxima, temperature sensor maxima and GPU device
+activity are read through native IOKit transports. SMC keys and GPU driver fields
+are undocumented and hardware/version dependent; missing readings remain
+unavailable. These complement Apple's system thermal state and public power
+constraints. PerformanceDaddy does not install a helper or change fan settings.
 CPU allowances may also be unavailable on a particular Mac; unavailable never
 means zero or unrestricted.
 
@@ -261,9 +266,10 @@ check compares recorded resources with the open capture and preserves the normal
 Fan checks use the existing local recent-run history; **Diagnose → Recent runs**
 can reopen earlier captures for the fan interpretation.
 
-Fan noise is a user observation. This implementation does not read actual fan
-RPM, raw temperatures or GPU activity. Nominal thermal state does not prove a
-quiet fan, and a resource comparison cannot establish fan-noise improvement.
+Fan loudness is a user observation; available RPM, temperatures and GPU activity
+are recorded separately. Nominal thermal state does not prove a quiet fan.
+Coincident workload activity does not prove the source of heat, and a resource
+comparison cannot establish fan-noise or interaction improvement.
 Sustained CPU work is an investigation signal, not proof of whole-machine
 saturation or the physical cause of heat. Unavailable domains remain explicit.
 

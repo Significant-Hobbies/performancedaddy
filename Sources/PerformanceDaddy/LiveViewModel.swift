@@ -64,7 +64,12 @@ final class LiveViewModel: ObservableObject {
     @Published var search = "" { didSet { rowCache.removeAll() } }
     @Published var sortOrder = [KeyPathComparator(\LiveProcess.sortCPU, order: .reverse)] { didSet { rowCache.removeAll() } }
     @Published var selection: Set<ProcessIdentity> = []
-    @Published var paused = false { didSet { if paused != oldValue { needsNewMeasurementWindow = true } } }
+    @Published var paused = false { didSet {
+        if paused != oldValue {
+            needsNewMeasurementWindow = true; measurementGeneration = UUID()
+            if paused { heartbeat.stop() } else if task != nil { heartbeat.start() }
+        }
+    } }
     @Published var includeSystem = false { didSet { rowCache.removeAll() } }
     @Published var grouping: ProcessGrouping = .none
     @Published var memoryHistory: [MemoryPoint] = []
@@ -98,6 +103,16 @@ final class LiveViewModel: ObservableObject {
     @Published private(set) var latestEvidence: SystemSample?
     @Published var inspectPorts = false
     private(set) var lastExternalApp: ForegroundEvidence?
+    private var lastExternalPID: Int32?
+    @Published var appResponseEnabled = UserDefaults.standard.bool(forKey: "appResponseProbeEnabled") { didSet {
+        UserDefaults.standard.set(appResponseEnabled, forKey: "appResponseProbeEnabled")
+        measurementGeneration = UUID()
+    } }
+    @Published private(set) var appResponsePermissionAvailable = AppProbePermission.available
+    private let heartbeat = MainQueueHeartbeat()
+    private let appResponseReader = AppResponseReader()
+    private var localEventMonitor: Any?
+    private var measurementGeneration = UUID()
     private var foregroundObserver: NSObjectProtocol?
     private var evidenceBuilder = SnapshotEvidenceBuilder()
     private var incidentBuffer = IncidentBuffer()
@@ -130,6 +145,7 @@ final class LiveViewModel: ObservableObject {
     private var lifecycleLoaded = false
     private var confirmedExits: Set<ProcessIdentity> = []
     private var wakeObserver: NSObjectProtocol?
+    private var sleepObserver: NSObjectProtocol?
     /// Receives each completed live sample, e.g. for sustained-load alerts.
     var sampleObserver: ((LiveSnapshot) -> Void)?
     private var agentSignalObserver: NSObjectProtocol?
@@ -140,6 +156,13 @@ final class LiveViewModel: ObservableObject {
 
     func start() {
         guard task == nil else { return }
+        if !paused { heartbeat.start() }
+        if localEventMonitor == nil {
+            localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] event in
+                if self?.paused == false { self?.heartbeat.recordLocalEvent(timestamp: event.timestamp) }
+                return event
+            }
+        }
         agentPresenceTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -160,6 +183,13 @@ final class LiveViewModel: ObservableObject {
                 forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
             ) { [weak self] _ in
                 Task { @MainActor in self?.handleSystemWake() }
+            }
+        }
+        if sleepObserver == nil {
+            sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.heartbeat.stop(); self?.measurementGeneration = UUID() }
             }
         }
         observeForeground()
@@ -277,6 +307,12 @@ final class LiveViewModel: ObservableObject {
             await sampler.resetMeasurementWindow()
         }
         let result = await sampler.sample(includePorts: inspectPorts && !background)
+        refreshForegroundContext()
+        let generation = measurementGeneration
+        let target = probeTarget(in: result)
+        let appProbe = await appResponseReader.sample(target: target, enabled: appResponseEnabled && !paused)
+        refreshForegroundContext()
+        appResponsePermissionAvailable = AppProbePermission.available
         let previousEventCount = lifecycle.events.count
         lifecycle.observe(result.processes, at: result.date)
         let checks = Set(lifecycle.pendingExitChecks + outcomes.filter(\.signalSent).map { $0.process.id }).subtracting(confirmedExits)
@@ -308,7 +344,12 @@ final class LiveViewModel: ObservableObject {
         }
         refreshing = false
         if lifecycle.events.count != previousEventCount { persistLifecycle() }
-        let evidence = evidenceBuilder.sample(result, foreground: lastExternalApp)
+        var evidence = evidenceBuilder.sample(result, foreground: lastExternalApp)
+        if generation == measurementGeneration && target?.identity.pid == lastExternalPID {
+            evidence = evidence.withResponsiveness(heartbeat.drain(appProbe: appProbe))
+        } else {
+            evidence = evidence.withResponsiveness(heartbeat.drain(appProbe: nil))
+        }
         incidentBuffer.append(evidence)
         latestEvidence = evidence
         recentEvidenceCount = incidentBuffer.samples.count
@@ -320,6 +361,7 @@ final class LiveViewModel: ObservableObject {
         func accept(_ app: NSRunningApplication?) {
             guard let app, app.processIdentifier != getpid(), let name = app.localizedName else { return }
             lastExternalApp = ForegroundEvidence(name: name, bundleID: app.bundleIdentifier, observedAt: Date())
+            lastExternalPID = app.processIdentifier
         }
         accept(NSWorkspace.shared.frontmostApplication)
         foregroundObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -329,9 +371,29 @@ final class LiveViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self, app.processIdentifier != getpid(), let name = app.localizedName else { return }
                 self.lastExternalApp = ForegroundEvidence(name: name, bundleID: app.bundleIdentifier, observedAt: Date())
+                self.lastExternalPID = app.processIdentifier
             }
         }
     }
+
+    private func probeTarget(in snapshot: LiveSnapshot) -> AppProbeTarget? {
+        guard let pid = lastExternalPID, let context = lastExternalApp,
+              Date().timeIntervalSince(context.observedAt) < 300,
+              let process = snapshot.processes.first(where: { $0.id.pid == pid }),
+              let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated,
+              app.bundleIdentifier == context.bundleID else { return nil }
+        let version = app.bundleURL.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String }
+        return AppProbeTarget(identity: process.id, name: context.name, bundleID: context.bundleID, version: version)
+    }
+
+    private func refreshForegroundContext() {
+        guard let app = NSWorkspace.shared.frontmostApplication, app.processIdentifier != getpid(),
+              let name = app.localizedName else { return }
+        lastExternalApp = ForegroundEvidence(name: name, bundleID: app.bundleIdentifier, observedAt: Date())
+        lastExternalPID = app.processIdentifier
+    }
+
+    func requestAppResponsePermission() { AppProbePermission.request() }
 
     func capture(duration: TimeInterval, marker: IncidentMarker?,
                  progress: @escaping @Sendable (Double) -> Void) async throws -> DiagnosticCapture {
@@ -741,6 +803,8 @@ final class LiveViewModel: ObservableObject {
 
     func handleSystemWake() {
         needsNewMeasurementWindow = true
+        measurementGeneration = UUID()
+        if task != nil && !paused { heartbeat.start() }
     }
 
     func restoreLifecycle() async {

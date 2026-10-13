@@ -23,6 +23,8 @@ final class DiagnosisViewModel: ObservableObject {
     @Published var profileImportError: String?
     @Published private(set) var importingProfile = false
     @Published var selectedLength: CaptureLength = .quick
+    @Published var selectedSymptom: ReportedSymptom = .wholeMac
+    @Published var preparingFollowUp = false
     @Published private(set) var report: DiagnosticReport?
     @Published private(set) var baselineReport: DiagnosticReport?
     @Published private(set) var comparison: DiagnosticComparison?
@@ -40,7 +42,7 @@ final class DiagnosisViewModel: ObservableObject {
 
     func markSlowMoment() {
         guard !isRecording else { return }
-        let marker = IncidentMarker(date: Date(), symptom: "Whole Mac felt slow", foreground: liveSource?.lastExternalApp)
+        let marker = IncidentMarker(date: Date(), symptom: selectedSymptom.rawValue, foreground: liveSource?.lastExternalApp)
         beginRecording(comparingTo: nil, fromSavedBaseline: false, marker: marker)
     }
 
@@ -133,13 +135,33 @@ final class DiagnosisViewModel: ObservableObject {
     }
 
     func performRecommendedAction() {
-        if report?.finding.kind == .healthy || report?.finding.kind == .inconclusive {
-            selectedLength = .standard
-        }
-        beginRecording(comparingTo: report, fromSavedBaseline: false)
+        guard report != nil, !isRecording else { return }
+        preparingFollowUp = true
     }
 
-    private func beginRecording(comparingTo baseline: DiagnosticReport?, fromSavedBaseline: Bool, marker: IncidentMarker? = nil) {
+    func recordFollowUp(task: String, change: ReportedChange, detail: String, sameTaskConfirmed: Bool) {
+        guard let report, !isRecording, sameTaskConfirmed,
+              !task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let baseline = FollowUpBaseline(report.capture)
+        guard baseline.capture.duration >= 3, baseline.samples.count >= 2 else {
+            errorMessage = "The original incident needs at least two observations after its marker for a follow-up. Record a new incident."
+            return
+        }
+        let evidence = FollowUpEvidence(baseline: baseline, task: task, change: change, changeDetail: detail, sameTaskConfirmed: true)
+        preparingFollowUp = false
+        beginRecording(comparingTo: engine.analyze(baseline.capture), fromSavedBaseline: false, followUp: evidence)
+    }
+
+    func reportSymptomOutcome(_ outcome: ReportedOutcome) {
+        guard let report, let followUp = report.capture.followUp else { return }
+        let updated = engine.analyze(report.capture.withFollowUp(followUp.reporting(outcome)))
+        self.report = updated
+        if let index = recentReports.firstIndex(where: { $0.capture.startedAt == report.capture.startedAt && $0.capture.endedAt == report.capture.endedAt }) {
+            recentReports[index] = updated; persistHistory()
+        }
+    }
+
+    private func beginRecording(comparingTo baseline: DiagnosticReport?, fromSavedBaseline: Bool, marker: IncidentMarker? = nil, followUp: FollowUpEvidence? = nil) {
         recordingTask?.cancel()
         let previousReport = report
         baselineReport = baseline
@@ -149,7 +171,7 @@ final class DiagnosisViewModel: ObservableObject {
         progress = 0
         errorMessage = nil
         report = nil
-        let duration = marker == nil ? selectedLength.seconds : 30
+        let duration = followUp.map { min(120, max(3, $0.baseline.capture.duration)) } ?? (marker == nil ? selectedLength.seconds : 30)
 
         recordingTask = Task { [weak self] in
             guard let self else { return }
@@ -163,7 +185,7 @@ final class DiagnosisViewModel: ObservableObject {
                 } else {
                     capture = try await recorder.record(duration: duration, progress: progress)
                 }
-                let nextReport = engine.analyze(capture)
+                let nextReport = engine.analyze(capture.withFollowUp(followUp))
                 accept(nextReport)
                 if let baseline {
                     comparison = engine.compare(before: baseline, after: nextReport)
@@ -177,11 +199,13 @@ final class DiagnosisViewModel: ObservableObject {
                 report = previousReport
                 baselineReport = nil
                 comparisonFromSavedBaseline = false
+                if let previousReport { restoreFollowUp(previousReport) }
             } catch {
                 errorMessage = "The recording could not finish: \(error.localizedDescription)"
                 report = previousReport
                 baselineReport = nil
                 comparisonFromSavedBaseline = false
+                if let previousReport { restoreFollowUp(previousReport) }
             }
             isRecording = false
         }
@@ -203,6 +227,7 @@ final class DiagnosisViewModel: ObservableObject {
 
     func accept(_ completed: DiagnosticReport) {
         report = completed
+        restoreFollowUp(completed)
         recentReports.insert(completed, at: 0)
         if recentReports.count > 10 { recentReports.removeLast(recentReports.count - 10) }
         persistHistory()
@@ -215,6 +240,15 @@ final class DiagnosisViewModel: ObservableObject {
         comparison = nil
         comparisonFromSavedBaseline = false
         errorMessage = nil
+        restoreFollowUp(previous)
+    }
+
+    private func restoreFollowUp(_ report: DiagnosticReport) {
+        guard let followUp = report.capture.followUp else { return }
+        let baseline = engine.analyze(followUp.baseline.capture)
+        baselineReport = baseline
+        comparison = engine.compare(before: baseline, after: report)
+        comparisonFromSavedBaseline = false
     }
 
     func saveKnownGoodBaseline(_ selected: DiagnosticReport) async {
