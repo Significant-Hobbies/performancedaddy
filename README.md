@@ -234,7 +234,8 @@ core. Ports may be unavailable due to permissions, process exits or bounded
 scan limits; a non-loopback bind alone does not establish network reachability.
 
 Repeatable workflow experiments, compact derived history with sample expiry,
-disk/GPU/network throughput and StorageDaddy handoff remain future work.
+storage latency, per-app GPU attribution, network throughput and StorageDaddy
+handoff remain future work.
 
 Before/after diagnosis rejects insufficient or mismatched evidence and reports
 mixed resource changes as inconclusive. Allocated swap alone is not a diagnosis
@@ -247,10 +248,11 @@ Rates reset after pause/resume, failed reads and long gaps. Memory categories
 overlap; swap rates describe VM pages, not physical disk throughput. These values
 are included explicitly in redacted snapshot exports.
 
-Raw fan RPM and temperature readings appear as unavailable because this release
-does not use unsupported private SMC interfaces. The supported signal is Apple's
-system thermal state plus public power constraints. PerformanceDaddy does not
-install a helper or change fan settings.
+Available fan RPM, reported fan maxima, temperature sensor maxima and GPU device
+activity are read through native IOKit transports. SMC keys and GPU driver fields
+are undocumented and hardware/version dependent; missing readings remain
+unavailable. These complement Apple's system thermal state and public power
+constraints. PerformanceDaddy does not install a helper or change fan settings.
 CPU allowances may also be unavailable on a particular Mac; unavailable never
 means zero or unrestricted.
 
@@ -264,9 +266,10 @@ check compares recorded resources with the open capture and preserves the normal
 Fan checks use the existing local recent-run history; **Diagnose → Recent runs**
 can reopen earlier captures for the fan interpretation.
 
-Fan noise is a user observation. This implementation does not read actual fan
-RPM, raw temperatures or GPU activity. Nominal thermal state does not prove a
-quiet fan, and a resource comparison cannot establish fan-noise improvement.
+Fan loudness is a user observation; available RPM, temperatures and GPU activity
+are recorded separately. Nominal thermal state does not prove a quiet fan.
+Coincident workload activity does not prove the source of heat, and a resource
+comparison cannot establish fan-noise or interaction improvement.
 Sustained CPU work is an investigation signal, not proof of whole-machine
 saturation or the physical cause of heat. Unavailable domains remain explicit.
 
