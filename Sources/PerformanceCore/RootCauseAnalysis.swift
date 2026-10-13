@@ -18,6 +18,8 @@ public struct RootCauseAnalysis: Equatable, Sendable {
         let signals = Set(assessments.filter { $0.status == .observed }.map(\.id))
         if signals.contains("thermal") { return "Thermal pressure needs investigation." }
         if signals.contains("memory") && signals.contains("paging") { return "Memory demand and paging need investigation." }
+        if signals.contains("pressure") { return "macOS memory pressure needs investigation." }
+        if signals.contains("gpu") { return "GPU activity needs investigation." }
         if signals.contains("cpu") { return "CPU work is the strongest recorded signal." }
         if signals.contains("memory") { return "Low memory headroom needs a closer check." }
         if signals.contains("disk") { return "Low disk capacity needs review." }
@@ -73,6 +75,32 @@ public struct RootCauseAnalysis: Equatable, Sendable {
                   evidence: "Minimum free space: \(disk.min().map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .memory) } ?? "unavailable"); \(disk.count)/\(count) readable samples.",
                   limitation: "Below 20 GiB is a capacity review threshold, not proof of slow storage. Disk latency and throughput are not captured here."),
         ]
+        let incidents = samples.compactMap(\.incident)
+        if !incidents.isEmpty {
+            let pressures = incidents.filter { $0.pressure == "Warning" || $0.pressure == "Critical" }.count
+            assessments.append(.init(id: "pressure", title: "macOS memory pressure", status: status(repeated(pressures) || incidents.contains { $0.pressure == "Critical" }, incidents.filter { ["Normal", "Warning", "Critical"].contains($0.pressure) }.count),
+                evidence: "Warning/critical in \(pressures)/\(count) observations.", limitation: "This is the OS pressure signal. It still needs correlation with the reported delay."))
+            let gpu = incidents.compactMap { $0.hardware?.gpuUtilizationPercent }.filter { valid($0) && $0 <= 100 }
+            let busyGPU = gpu.filter { $0 >= 70 }.count
+            assessments.append(.init(id: "gpu", title: "GPU device activity", status: status(repeated(busyGPU), gpu.count),
+                evidence: "At least 70% in \(busyGPU)/\(count) observations; peak \(gpu.max().map { number($0) + "%" } ?? "unavailable").",
+                limitation: "Driver utilization is activity, not proof of rendering latency or which app caused it. Hardware coverage varies."))
+            let fanRatios = incidents.compactMap { $0.hardware?.fans?.compactMap(\.fractionOfMaximum).max() }
+            assessments.append(.init(id: "fans", title: "Measured fan speed", status: status(repeated(fanRatios.filter { $0 >= 0.9 }.count), fanRatios.count),
+                evidence: "Highest recorded fraction of each fan's reported maximum: \(fanRatios.max().map { number($0 * 100) + "%" } ?? "unavailable").",
+                limitation: "RPM is measured separately for each fan. A reported maximum and loudness do not establish the source of heat."))
+            let ioRates = incidents.map { $0.workloads.compactMap { workload -> Double? in
+                guard workload.readBytesPerSecond != nil || workload.writtenBytesPerSecond != nil else { return nil }
+                return (workload.readBytesPerSecond ?? 0) + (workload.writtenBytesPerSecond ?? 0)
+            }.reduce(0, +) }
+            assessments.append(.init(id: "io", title: "Recorded workload disk I/O", status: status(repeated(ioRates.filter { $0 >= 50 * 1024 * 1024 }.count), incidents.filter { $0.workloads.contains { $0.readBytesPerSecond != nil || $0.writtenBytesPerSecond != nil } }.count),
+                evidence: "Peak retained workload throughput: \(ioRates.max().map { ByteCountFormatter.string(fromByteCount: Int64(min(max(0, $0), Double(Int64.max) - 4096)), countStyle: .memory) + "/s" } ?? "unavailable").",
+                limitation: "Throughput is not storage latency. Partial/omitted process reads make this a lower bound."))
+            let changes = incidents.map(\.newlyObservedProcesses).reduce(0, +)
+            assessments.append(.init(id: "launches", title: "Observed process arrivals", status: changes >= 20 ? .observed : .notObserved,
+                evidence: "\(changes) newly observed process instances after the initial census.",
+                limitation: "Polling is not an execution-event log. Arrivals can include previously unreadable processes; short-lived commands and tab-opening requests may be missed."))
+        }
         // Signals first; preserve domain order within each tier.
         assessments = assessments.enumerated().sorted {
             let left = $0.element.status == .observed ? 0 : $0.element.status == .insufficient ? 1 : 2
@@ -93,14 +121,44 @@ public struct RootCauseAnalysis: Equatable, Sendable {
             }
             for name in names { appearances[name, default: 0] += 1 }
         }
-        let contributors = totals.filter { $0.value.isFinite && $0.value > 0 }.sorted {
+        var contributors = totals.filter { $0.value.isFinite && $0.value > 0 }.sorted {
             $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value
         }.prefix(3).map {
             "\($0.key): \(number($0.value)) recorded cores per sample; present in \(appearances[$0.key] ?? 0)/\(count) samples."
         }
+        if !incidents.isEmpty {
+            var work: [String: (name: String, cpu: Double, readable: Int, footprint: UInt64, io: Double?)] = [:]
+            for evidence in incidents {
+                for item in evidence.workloads {
+                    var prior = work[item.id] ?? (item.name + (item.project.map { " · " + $0 } ?? ""), 0, 0, 0, nil)
+                    if let cpu = item.cpuCores, valid(cpu) { prior.cpu += cpu / Double(max(count, 1)); prior.readable += 1 }
+                    prior.footprint = max(prior.footprint, item.footprintBytes ?? item.residentBytes)
+                    if item.readBytesPerSecond != nil || item.writtenBytesPerSecond != nil {
+                        let rate = (item.readBytesPerSecond ?? 0) + (item.writtenBytesPerSecond ?? 0)
+                        if valid(rate) { prior.io = max(prior.io ?? 0, rate) }
+                    }
+                    work[item.id] = prior
+                }
+            }
+            var displayed: [String] = []; var ids = Set<String>()
+            let cpuLeaders = work.sorted { $0.value.cpu > $1.value.cpu }.prefix(5)
+            let memoryLeaders = work.sorted { $0.value.footprint > $1.value.footprint }.prefix(3)
+            let ioLeaders = work.filter { ($0.value.io ?? 0) > 0 }.sorted { ($0.value.io ?? 0) > ($1.value.io ?? 0) }.prefix(3)
+            for (id, item) in Array(cpuLeaders) + Array(memoryLeaders) + Array(ioLeaders) where ids.insert(id).inserted {
+                let io = item.io.map { ByteCountFormatter.string(fromByteCount: Int64(min(max(0, $0), Double(Int64.max) - 4096)), countStyle: .memory) + "/s peak recorded I/O" } ?? "I/O unavailable"
+                displayed.append("\(item.name): \(item.readable > 0 ? number(item.cpu) + " recorded cores/observation" : "CPU rate unavailable"); CPU readable in \(item.readable)/\(count), peak footprint/RSS \(ByteCountFormatter.string(fromByteCount: Int64(clamping: item.footprint), countStyle: .memory)); \(io).")
+            }
+            contributors = displayed
+        }
         let conclusion: String
         let next: String
-        if hotCount > 0 {
+        if assessments.contains(where: { $0.id == "pressure" && $0.status == .observed }) && hotCount == 0 {
+            conclusion = "macOS memory pressure was observed. Memory demand is a candidate contributor; the cause of your delay is not established."
+            next = "Review the recorded footprint leaders and paging trends. After one reviewed change, repeat the same task and recording length; task responsiveness still needs verification."
+        } else if assessments.contains(where: { $0.id == "gpu" && $0.status == .observed }) && hotCount == 0 {
+            conclusion = "Repeated GPU activity was measured alongside the incident. It is a candidate heat or rendering contributor; app attribution and the cause of the delay are not established."
+            next = "Repeat the same slow action and compare GPU activity, measured fan RPM and the foreground app. Import a selected-app stack report if it beachballs despite low CPU."
+        } else if hotCount > 0 {
             conclusion = "Thermal pressure was observed and may be limiting performance. Its underlying cause is not established."
             next = "Keep airflow clear, allow cooling, then reproduce the same slow task and compare a recording of equal length. Check whether the task and thermal state both improve."
         } else if lowMemory && swapping {
@@ -121,9 +179,9 @@ public struct RootCauseAnalysis: Equatable, Sendable {
         }
         let observer = samples.compactMap(\.samplerCPUCores).filter(valid).max()
         return Self(conclusion: conclusion, assessments: assessments, contributors: contributors,
-                    coverage: "\(count) distinct in-window samples; \(capture.samples.count - count) invalid, duplicate or out-of-window samples excluded. Peak recorded observer CPU: \(observer.map(number) ?? "unavailable") cores.",
+                    coverage: "\(count) distinct in-window samples; \(capture.samples.count - count) invalid, duplicate or out-of-window samples excluded. Peak recorded observer CPU (PerformanceDaddy itself): \(observer.map(number) ?? "unavailable") cores.",
                     nextCheck: next,
-                    limitations: "No causal intervention was performed. Process attribution includes at most the sampler's top 16 readable rows per sample, grouped by name—not verified app ownership. Missing rows are not proven idle; contributor averages are lower bounds of recorded work. Network latency, app hangs, GPU activity, disk latency and first-prompt timing are not measured by this recording. Non-observation only describes this window, not the absence of a problem.")
+                    limitations: incidents.isEmpty ? "No causal intervention was performed. Legacy attribution contains at most 16 CPU-ranked process rows per observation, grouped by name. GPU/fans, response latency, Network latency and disk latency are unavailable in this capture. Missing rows are not proven idle; recorded contributor averages are lower bounds." : "No causal intervention or task-response timing was measured. Up to 32 workload families are retained across CPU, footprint and I/O ranking; resource sums and contributor averages are lower bounds of readable evidence. Project and app associations come from working-directory, executable and parent metadata, not verified ownership. Driver GPU/SMC readings are version-dependent. Polling can miss short-lived activity. Network latency, UI hangs and disk latency need targeted evidence. Non-observation describes this window only.")
     }
 
     private static func valid(_ value: Double) -> Bool { value.isFinite && value >= 0 }

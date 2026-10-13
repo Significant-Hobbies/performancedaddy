@@ -42,6 +42,7 @@ public struct SystemSample: Codable, Equatable, Sendable {
     public let memory: MemoryEvidence?
     public let power: PowerEvidence?
     public let workloads: [RecordedWorkload]?
+    public let incident: IncidentSampleEvidence?
 
     public init(
         timestamp: Date,
@@ -54,7 +55,8 @@ public struct SystemSample: Codable, Equatable, Sendable {
         samplerCPUCores: Double? = nil,
         memory: MemoryEvidence? = nil,
         power: PowerEvidence? = nil,
-        workloads: [RecordedWorkload]? = nil
+        workloads: [RecordedWorkload]? = nil,
+        incident: IncidentSampleEvidence? = nil
     ) {
         self.timestamp = timestamp
         self.usedCPUCores = usedCPUCores
@@ -67,6 +69,7 @@ public struct SystemSample: Codable, Equatable, Sendable {
         self.memory = memory
         self.power = power
         self.workloads = workloads
+        self.incident = incident
     }
 }
 
@@ -75,12 +78,14 @@ public struct DiagnosticCapture: Codable, Equatable, Sendable {
     public let endedAt: Date
     public let samples: [SystemSample]
     public let isFixture: Bool
+    public let marker: IncidentMarker?
 
-    public init(startedAt: Date, endedAt: Date, samples: [SystemSample], isFixture: Bool = false) {
+    public init(startedAt: Date, endedAt: Date, samples: [SystemSample], isFixture: Bool = false, marker: IncidentMarker? = nil) {
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.samples = samples
         self.isFixture = isFixture
+        self.marker = marker
     }
 
     public var duration: TimeInterval { max(0, endedAt.timeIntervalSince(startedAt)) }

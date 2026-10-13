@@ -26,7 +26,7 @@ enum LivePage: String, CaseIterable, Identifiable {
 
 @MainActor
 final class LiveViewModel: ObservableObject {
-    static let minimumRefreshInterval: Double = 10
+    static let minimumRefreshInterval: Double = 5
     static let maximumRefreshInterval: Double = 15
 
     enum ProcessGrouping: String, CaseIterable, Identifiable {
@@ -92,8 +92,16 @@ final class LiveViewModel: ObservableObject {
     private var surfaceRefreshTask: Task<Void, Never>?
     var hasVisibleSurface: Bool { !visibleSurfaces.isEmpty }
     var automaticRefreshInterval: Double {
-        hasVisibleSurface ? Self.refreshInterval(after: snapshot?.scanSeconds) : 30
+        Self.refreshInterval(after: snapshot?.scanSeconds)
     }
+    @Published private(set) var recentEvidenceCount = 0
+    @Published private(set) var latestEvidence: SystemSample?
+    @Published var inspectPorts = false
+    private(set) var lastExternalApp: ForegroundEvidence?
+    private var foregroundObserver: NSObjectProtocol?
+    private var evidenceBuilder = SnapshotEvidenceBuilder()
+    private var incidentBuffer = IncidentBuffer()
+    private var capturingIncident = false
     private var index = WorkloadIndex([])
     private var rowCache: [LivePage: [LiveProcess]] = [:]
     private var agentRows: [LiveProcess]?
@@ -154,6 +162,7 @@ final class LiveViewModel: ObservableObject {
                 Task { @MainActor in self?.handleSystemWake() }
             }
         }
+        observeForeground()
         task = Task { [weak self] in
             await self?.restoreLifecycle()
             while !Task.isCancelled {
@@ -164,7 +173,7 @@ final class LiveViewModel: ObservableObject {
                     objectWillChange.send()
                     persistLifecycle()
                 }
-                if !paused && review == nil && !performingAction { await refresh(background: !hasVisibleSurface) }
+                if !capturingIncident && !paused && review == nil && !performingAction { await refresh(background: !hasVisibleSurface) }
                 let interval = automaticRefreshInterval
                 do { try await Task.sleep(for: .seconds(interval)) } catch { return }
             }
@@ -175,9 +184,6 @@ final class LiveViewModel: ObservableObject {
         let wasVisible = hasVisibleSurface
         if visible { visibleSurfaces.insert(id) } else { visibleSurfaces.remove(id) }
         guard wasVisible != hasVisibleSurface else { return }
-        needsNewMeasurementWindow = true
-        processHistory.reset()
-        memoryHistory.removeAll()
         rowCache.removeAll()
         if !hasVisibleSurface {
             ProcessIconCache.images.removeAllObjects()
@@ -267,9 +273,10 @@ final class LiveViewModel: ObservableObject {
         if needsNewMeasurementWindow {
             needsNewMeasurementWindow = false
             processHistory.reset()
+            evidenceBuilder.reset()
             await sampler.resetMeasurementWindow()
         }
-        let result = await sampler.sample(includePorts: !background)
+        let result = await sampler.sample(includePorts: inspectPorts && !background)
         let previousEventCount = lifecycle.events.count
         lifecycle.observe(result.processes, at: result.date)
         let checks = Set(lifecycle.pendingExitChecks + outcomes.filter(\.signalSent).map { $0.process.id }).subtracting(confirmedExits)
@@ -281,8 +288,7 @@ final class LiveViewModel: ObservableObject {
         confirmedExits.formUnion(gone)
         confirmedExits.formIntersection(Set(lifecycle.pendingExitChecks + outcomes.map { $0.process.id }))
         let elapsed = historyOrigin.duration(to: .now).components
-        if background { processHistory.reset() }
-        else { processHistory.observe(result.processes, at: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18) }
+        processHistory.observe(result.processes, at: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
         snapshot = result
         let liveIdentities = Set(result.processes.map(\.id))
         // A missing inventory row does not prove exit. Preserve recent hooks
@@ -296,13 +302,60 @@ final class LiveViewModel: ObservableObject {
         codexSessionLinks = codexSessionLinks.filter { !absentAgentProcesses.contains($0.key) }
         absentAgentProcesses.formIntersection(liveIdentities)
         selection.formIntersection(Set(result.processes.map(\.id)))
-        if !background, let headroom = result.system.memoryHeadroomRatio, headroom.isFinite, (0...1).contains(headroom) {
+        if let headroom = result.system.memoryHeadroomRatio, headroom.isFinite, (0...1).contains(headroom) {
             memoryHistory.append(MemoryPoint(date: result.date, used: 1 - headroom))
             memoryHistory.removeAll { $0.date < result.date.addingTimeInterval(-300) }
         }
         refreshing = false
         if lifecycle.events.count != previousEventCount { persistLifecycle() }
+        let evidence = evidenceBuilder.sample(result, foreground: lastExternalApp)
+        incidentBuffer.append(evidence)
+        latestEvidence = evidence
+        recentEvidenceCount = incidentBuffer.samples.count
         sampleObserver?(result)
+    }
+
+    private func observeForeground() {
+        guard foregroundObserver == nil else { return }
+        func accept(_ app: NSRunningApplication?) {
+            guard let app, app.processIdentifier != getpid(), let name = app.localizedName else { return }
+            lastExternalApp = ForegroundEvidence(name: name, bundleID: app.bundleIdentifier, observedAt: Date())
+        }
+        accept(NSWorkspace.shared.frontmostApplication)
+        foregroundObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            Task { @MainActor in
+                guard let self, app.processIdentifier != getpid(), let name = app.localizedName else { return }
+                self.lastExternalApp = ForegroundEvidence(name: name, bundleID: app.bundleIdentifier, observedAt: Date())
+            }
+        }
+    }
+
+    func capture(duration: TimeInterval, marker: IncidentMarker?,
+                 progress: @escaping @Sendable (Double) -> Void) async throws -> DiagnosticCapture {
+        guard !capturingIncident, !paused, review == nil, !performingAction else {
+            throw NSError(domain: "PerformanceDaddy", code: 1, userInfo: [NSLocalizedDescriptionKey: "Resume monitoring and finish any reviewed action before recording."])
+        }
+        capturingIncident = true
+        defer { capturingIncident = false }
+        let start = Date()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(duration))
+        var samples = marker.map { incidentBuffer.preceding($0.date) } ?? []
+        while true {
+            try Task.checkCancellation()
+            while refreshing { try await Task.sleep(for: .milliseconds(20)) }
+            await refresh(background: true)
+            if let sample = latestEvidence, sample.timestamp >= start,
+               samples.last?.timestamp != sample.timestamp { samples.append(sample) }
+            let remaining = ContinuousClock.now.duration(to: deadline).components
+            let seconds = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
+            progress(min(1, max(0, 1 - seconds / duration)))
+            if seconds <= 0 { break }
+            try await Task.sleep(for: .seconds(max(2, min(10, (snapshot?.scanSeconds ?? 0) * 20))))
+        }
+        return DiagnosticCapture(startedAt: samples.first?.timestamp ?? start, endedAt: Date(), samples: samples, marker: marker)
     }
 
     func rows(for page: LivePage) -> [LiveProcess] {
@@ -549,7 +602,8 @@ final class LiveViewModel: ObservableObject {
             Set(identities.filter { ProcessPresence.inspect($0) == .gone })
         }.value
         if gone != absentAgentProcesses { absentAgentProcesses = gone }
-        codexSessionLinks = codexSessionLinks.filter { !gone.contains($0.key) }
+        let remainingLinks = codexSessionLinks.filter { !gone.contains($0.key) }
+        if remainingLinks != codexSessionLinks { codexSessionLinks = remainingLinks }
         // Hook expiry must also redraw while process sampling is paused.
         let activities = Dictionary(agentWallTiles.map { ($0.id, $0.activity) }, uniquingKeysWith: { first, _ in first })
         if activities != lastAgentActivities {

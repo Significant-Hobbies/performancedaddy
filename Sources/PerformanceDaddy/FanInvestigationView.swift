@@ -4,6 +4,7 @@ import SaaSMakerUI
 
 struct FanInvestigationView: View {
     @ObservedObject var model: DiagnosisViewModel
+    var hardware: HardwareEvidence? = nil
 
     var body: some View {
         ScrollView {
@@ -43,6 +44,7 @@ struct FanInvestigationView: View {
                 .accessibilityAddTraits(.isHeader)
             Text("Record while the fan is loud. We’ll look for sustained CPU work, app and agent contributors, thermal pressure and macOS power constraints.")
                 .foregroundStyle(PerformanceTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
+            if let hardware { HardwareEvidenceView(hardware: hardware) }
             coverage
             Picker("Recording length", selection: $model.selectedLength) {
                 ForEach(DiagnosisViewModel.CaptureLength.allCases) { length in
@@ -91,6 +93,7 @@ struct FanInvestigationView: View {
                 evidenceRow("Peak CPU", cores(finding.peakCPUCores))
                 evidenceRow("CPU trend", finding.cpuTrend.rawValue)
                 evidenceRow("Peak thermal state", finding.peakThermal.rawValue.capitalized)
+                if let hardware = report.capture.samples.compactMap({ $0.incident?.hardware }).last { HardwareEvidenceView(hardware: hardware) }
                 coverage
             }
             band("WHY") {
@@ -132,7 +135,7 @@ struct FanInvestigationView: View {
                     Text(comparison.title).font(.headline)
                     Text(comparison.detail).font(.callout)
                     Text(FanInvestigation.compareWorkload(before: baseline.capture, after: report.capture)).font(.callout)
-                    Text("This comparison covers recorded CPU, memory and thermal evidence. Fan speed and noise changes were not measured.")
+                    Text("This comparison covers recorded CPU, memory and thermal evidence. Fan noise and task responsiveness remain user-reported; compare available RPM readings separately.")
                         .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
                 }
             }
@@ -152,9 +155,7 @@ struct FanInvestigationView: View {
 
     private var coverage: some View {
         VStack(alignment: .leading, spacing: 8) {
-            evidenceRow("Fan RPM", "Unavailable")
-            evidenceRow("GPU activity", "Not measured")
-            Text("Fan noise is your observation. Thermal state does not measure fan speed or raw temperature.")
+            Text("Fan noise is your observation. Available RPM, sensor and GPU driver readings are shown separately. Thermal state alone does not establish fan speed or the source of heat.")
                 .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
         }
     }

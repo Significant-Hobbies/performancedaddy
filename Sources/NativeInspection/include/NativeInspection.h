@@ -19,3 +19,16 @@ int pd_process(int32_t pid, PDProcess *output);
 int pd_presence(int32_t pid, uint64_t started);
 int pd_ports(int32_t pid, PDPort *output, int capacity, int *incomplete);
 int pd_signal(int32_t pid, uint64_t started, uint32_t uid, int force);
+
+// Read-only hardware adapter. Undocumented driver fields are capability-checked.
+typedef struct PDHardwareReader PDHardwareReader;
+typedef struct {
+    int fan_count;
+    double fan_rpm[10], fan_max_rpm[10];
+    double cpu_sensor_max_celsius, gpu_sensor_max_celsius, gpu_percent;
+    int cpu_sensor_count, gpu_sensor_count;
+} PDHardware;
+PDHardwareReader *pd_hardware_create(void);
+void pd_hardware_destroy(PDHardwareReader *reader);
+void pd_hardware_read(PDHardwareReader *reader, PDHardware *out);
+double pd_smc_decode(uint32_t type, const uint8_t *bytes, uint32_t size);
