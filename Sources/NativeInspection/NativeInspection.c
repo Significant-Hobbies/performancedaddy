@@ -1,6 +1,7 @@
 #include "NativeInspection.h"
 #include <libproc.h>
 #include <sys/proc_info.h>
+#include <sys/proc.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -57,6 +58,7 @@ int pd_process(int32_t pid, PDProcess *out) {
     struct proc_bsdinfo final = {0};
     if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &final, sizeof(final)) != sizeof(final) ||
         final.pbi_start_tvsec != b.pbi_start_tvsec || final.pbi_start_tvusec != b.pbi_start_tvusec) return 0;
+    out->is_suspended = final.pbi_status == SSTOP;
     return 1;
 }
 

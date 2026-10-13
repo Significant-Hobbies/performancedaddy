@@ -74,10 +74,11 @@ struct DashboardView: View {
                 }
             }
         }
-        .smTheme(PerformanceTheme.palette)
+        .performanceTheme(PerformanceTheme.palette)
         .buttonStyle(DaddyButtonStyle())
         .toolbar(.hidden, for: .windowToolbar)
         .task {
+            guard !PerformanceStartupCheck.enabled else { return }
             await model.loadHistory()
             live.start()
         }

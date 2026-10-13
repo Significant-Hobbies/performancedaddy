@@ -54,3 +54,16 @@ struct PrimaryActionButtonStyle: ButtonStyle {
         DaddyButtonStyle(prominent: true).makeBody(configuration: configuration)
     }
 }
+
+extension View {
+    /// Use packaged fonts when available; missing optional fonts must not trap.
+    func performanceTheme(_ palette: SMPalette) -> some View {
+        _ = PerformanceUIResources.loaded
+        return environment(\.smPalette, palette)
+            .tint(palette.brand)
+            .foregroundStyle(palette.foreground)
+            .font(.custom(palette.sansFont, size: 16, relativeTo: .body))
+            .background(palette.background.ignoresSafeArea())
+            .preferredColorScheme(palette.isDark ? .dark : .light)
+    }
+}

@@ -66,6 +66,7 @@ def main():
     sparkle_support.sign(app, args.identity)
     run("codesign", "--force", "--sign", args.identity, "--timestamp", "--options", "runtime", app)
     run("codesign", "--verify", "--deep", "--strict", app)
+    package_resources.check_startup(products, app)
     (stage / "Applications").symlink_to("/Applications")
     dmg = output / f"PerformanceDaddy-{args.version}-{args.build}-universal.dmg"
     run("hdiutil", "create", "-volname", "PerformanceDaddy", "-srcfolder", stage, "-format", "UDZO", dmg)

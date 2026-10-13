@@ -1,6 +1,21 @@
 import SwiftUI
 
 @main
+enum PerformanceDaddyMain {
+    @MainActor
+    static func main() {
+        if CommandLine.arguments.contains("--check-ui-resources") {
+            guard PerformanceUIResources.loaded else {
+                FileHandle.standardError.write(Data("PerformanceDaddy UI resources missing or invalid\n".utf8))
+                exit(EXIT_FAILURE)
+            }
+            print("PerformanceDaddy UI resources loaded")
+            return
+        }
+        PerformanceDaddyApp.main()
+    }
+}
+
 struct PerformanceDaddyApp: App {
     init() {
         if CommandLine.arguments.dropFirst().first == "--agent-hook" {
@@ -19,8 +34,11 @@ struct PerformanceDaddyApp: App {
             DashboardView(model: diagnosis, live: live)
                 .frame(minWidth: 980, minHeight: 800)
                 .background(MonitoringSurface(model: live))
-                .task { updates.start(live: live, diagnosis: diagnosis) }
-                .onAppear(perform: reviewActiveWorkBeforeQuit)
+                .task { if !PerformanceStartupCheck.enabled { updates.start(live: live, diagnosis: diagnosis) } }
+                .onAppear {
+                    reviewActiveWorkBeforeQuit()
+                    PerformanceStartupCheck.windowAppeared()
+                }
         }
         .defaultSize(width: 1_180, height: 800)
         .windowStyle(.hiddenTitleBar)
