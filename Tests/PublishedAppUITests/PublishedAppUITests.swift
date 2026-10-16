@@ -116,7 +116,7 @@ final class PublishedAppUITests: XCTestCase {
                 format: "label BEGINSWITH %@ OR value BEGINSWITH %@", subtitle, subtitle
             ))
                 .firstMatch.waitForExistence(timeout: 10), page)
-            try reachable(app.textFields["Search processes, projects and ports"], window: window)
+            try editSearch(app.textFields["Search processes, projects and ports"], window: window)
             for title in ["Pause", "Refresh processes", "Help with processes and measurements", "Stop…"] {
                 try reachable(app.descendants(matching: .any).matching(identifier: title).firstMatch,
                               window: window)
@@ -129,12 +129,12 @@ final class PublishedAppUITests: XCTestCase {
         )).firstMatch, window: window)
         try capture("Fans & heat")
         try open("App access", window: window)
-        try reachable(app.textFields["Search app access audit"], window: window)
+        try editSearch(app.textFields["Search app access audit"], window: window)
         try reachable(app.buttons["Review Login Items"], window: window)
         try reachable(app.buttons["Refresh audit"], window: window)
         try capture("App access")
         try open("Configuration", window: window)
-        try reachable(app.textFields["Search configuration files"], window: window)
+        try editSearch(app.textFields["Search configuration files"], window: window)
         try reachable(app.buttons["Refresh"], window: window)
         try capture("Configuration")
         try open("Diagnose", window: window)
@@ -158,6 +158,25 @@ final class PublishedAppUITests: XCTestCase {
         try reachable(button, window: window)
         button.click()
         try record("opened", extra: ["page": title])
+    }
+
+    @MainActor
+    private func editSearch(_ field: XCUIElement, window: XCUIElement) throws {
+        XCTAssertTrue(field.waitForExistence(timeout: 15))
+        XCTAssertGreaterThan(field.frame.width, 0)
+        XCTAssertGreaterThan(field.frame.height, 0)
+        XCTAssertTrue(window.frame.insetBy(dx: -1, dy: -1).contains(field.frame))
+        // Prove actual pointer and keyboard input. SwiftUI plain text fields
+        // can report isHittable=false despite being visible and editable.
+        field.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let probe = "fleet-ui-check-1701"
+        app.typeText(probe)
+        XCTAssertTrue((field.value as? String)?.contains(probe) == true,
+                      "The visible search field must receive typed input")
+        app.typeKey("a", modifierFlags: .command)
+        app.typeText(XCUIKeyboardKey.delete.rawValue)
+        XCTAssertFalse((field.value as? String)?.contains(probe) == true,
+                       "The search query must be clearable")
     }
 
     @MainActor
