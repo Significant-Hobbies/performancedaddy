@@ -165,7 +165,7 @@ def main():
         if not args.build_only:
             display = out / "ci-display"
             run("cc", str(ROOT / "scripts/ci-display-qualification.c"),
-                "-framework", "CoreGraphics", "-o", str(display))
+                "-framework", "CoreGraphics", "-framework", "CoreFoundation", "-o", str(display))
             configured = subprocess.run([str(display)], text=True, capture_output=True, timeout=30)
             (out / "display.json").write_text(configured.stdout)
             report["display"] = json.loads(configured.stdout)

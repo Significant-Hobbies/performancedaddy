@@ -8,7 +8,7 @@
 static void describe(CGDisplayModeRef mode) {
     printf("{\"id\":%" PRIu32 ",\"width\":%zu,\"height\":%zu,"
            "\"pixelWidth\":%zu,\"pixelHeight\":%zu}",
-           CGDisplayModeGetIODisplayModeID(mode), CGDisplayModeGetWidth(mode),
+           (uint32_t)CGDisplayModeGetIODisplayModeID(mode), CGDisplayModeGetWidth(mode),
            CGDisplayModeGetHeight(mode), CGDisplayModeGetPixelWidth(mode),
            CGDisplayModeGetPixelHeight(mode));
 }
@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
         if (i) printf(",");
         describe(mode);
         size_t width = CGDisplayModeGetWidth(mode), height = CGDisplayModeGetHeight(mode);
-        if (restoring && CGDisplayModeGetIODisplayModeID(mode) == restore) chosen = mode;
+        if (restoring && (uint32_t)CGDisplayModeGetIODisplayModeID(mode) == restore) chosen = mode;
         if (!restoring && width >= 1600 && height >= 1000 && width <= 2560 && height <= 1600 &&
             width * height < chosenArea) {
             chosen = mode;

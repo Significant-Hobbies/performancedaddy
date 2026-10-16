@@ -62,7 +62,7 @@ final class PublishedAppUITests: XCTestCase {
         let window = app.windows.firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 15))
         let initial = window.frame
-        resize(window, by: CGVector(dx: 140, dy: 80))
+        resize(window, by: CGVector(dx: 140, dy: 0))
         try record("resize-positive-control")
         XCTAssertGreaterThan(window.frame.width, initial.width + 100, "The window resize gesture must actually work")
         resize(window, by: CGVector(dx: -800, dy: -600))
