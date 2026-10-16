@@ -111,7 +111,7 @@ def candidate_app(cli, out):
     return app, info
 
 
-def configure_run(original, app, info, home, out, widths):
+def configure_run(original, app, info, home, out, widths, expect_overflow=False):
     document = plistlib.loads(original.read_bytes())
     version = document.get("__xctestrun_metadata__", {}).get("FormatVersion", 1)
     if version == 1:
@@ -134,6 +134,7 @@ def configure_run(original, app, info, home, out, widths):
         "PD_EPHEMERAL_UI_RUNNER": "true", "PD_EXPECTED_APP_PATH": str(app),
         "PD_PRIVATE_HOME": str(home), "PD_UI_OUTPUT": str(out),
         "PD_UI_WIDTHS": ",".join(map(str, widths)),
+        "PD_EXPECT_NAVIGATION_OVERFLOW": str(expect_overflow).lower(),
     })
     target["ParallelizationEnabled"] = False
     target["TestLanguage"] = "en"
@@ -230,7 +231,7 @@ def main():
                                "executableSha256": hashlib.sha256(executable.read_bytes()).hexdigest()}
         home = out / "private-home"
         home.mkdir()
-        configuration = configure_run(configuration, app, info, home, out, widths)
+        configuration = configure_run(configuration, app, info, home, out, widths, args.expect_navigation_overflow)
         test_result = mcp(cli, out, "test", "test", {
             "xctestrunPath": str(configuration),
             "extraArgs": ["-resultBundlePath", str(out / "PublishedUI.xcresult"),
@@ -246,7 +247,7 @@ def main():
                     not any("Navigation split group must fit inside the window" in str(f) for f in failures) or
                     last.get("stage") != "layout-observed" or last.get("page") != "Diagnose" or
                     last.get("navigationSplitGroup", {}).get("height", 0) <= last["window"]["height"] or
-                    qualified != PAGES[:-1]):
+                    qualified != []):
                 raise RuntimeError("The published app did not fail at the expected navigation overflow")
         elif (counts != {"passed": 1, "failed": 0, "skipped": 0} or
               qualified != PAGES * len(widths) or observations[-1].get("stage") != "completed"):
