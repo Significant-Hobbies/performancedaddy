@@ -62,13 +62,6 @@ final class PublishedAppUITests: XCTestCase {
         try prepare()
         let window = app.windows.firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 15))
-        // Qualify static layout with the owned app's sampler paused. Continuous
-        // table updates add unrelated redraw work during native capture.
-        let pause = app.buttons["Pause"]
-        try reachable(pause, window: window)
-        pause.click()
-        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 15))
-        try record("sampling-paused")
         let initial = window.frame
         resize(window, by: CGVector(dx: 140, dy: 0))
         try record("resize-positive-control")
@@ -89,6 +82,20 @@ final class PublishedAppUITests: XCTestCase {
         XCTAssertTrue(app.splitters.firstMatch.exists)
         XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2,
                        "Minimum supported content layout height")
+
+        // Freeze only the owned sampler after the startup and resize controls.
+        // Verify real pointer input through the resulting Resume control.
+        app.activate()
+        let pause = app.buttons["Pause"]
+        XCTAssertTrue(pause.waitForExistence(timeout: 15))
+        XCTAssertTrue(window.frame.insetBy(dx: -1, dy: -1).contains(pause.frame))
+        pause.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 15))
+        try record("sampling-paused")
+        resize(window, by: CGVector(dx: 20, dy: 0))
+        XCTAssertGreaterThan(window.frame.width, minimumWindow.width + 10)
+        resize(window, by: CGVector(dx: minimumWindow.width - window.frame.width, dy: 0))
+        XCTAssertEqual(window.frame.width, minimumWindow.width, accuracy: 2)
 
         if ProcessInfo.processInfo.environment["PD_EXPECT_NAVIGATION_OVERFLOW"] == "true" {
             try open("Diagnose", window: window)
