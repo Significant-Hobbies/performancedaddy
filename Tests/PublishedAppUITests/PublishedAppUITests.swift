@@ -83,6 +83,14 @@ final class PublishedAppUITests: XCTestCase {
         XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2,
                        "Minimum supported content layout height")
 
+        // Freeze the owned app's table while checking layout and hit targets.
+        // Continuous live row updates can invalidate an AX snapshot mid-query.
+        app.activate()
+        let pause = app.buttons["Pause"]
+        XCTAssertTrue(pause.waitForExistence(timeout: 15))
+        pause.click()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 15))
+
         let widths = (ProcessInfo.processInfo.environment["PD_UI_WIDTHS"] ?? "980")
             .split(separator: ",").compactMap { Double($0) }
         XCTAssertFalse(widths.isEmpty)
@@ -110,7 +118,7 @@ final class PublishedAppUITests: XCTestCase {
             ))
                 .firstMatch.waitForExistence(timeout: 10), page)
             try reachable(app.textFields["Search processes, projects and ports"], window: window)
-            for title in ["Pause", "Refresh processes", "Help with processes and measurements", "Stop…"] {
+            for title in ["Resume", "Refresh processes", "Help with processes and measurements", "Stop…"] {
                 try reachable(app.descendants(matching: .any).matching(identifier: title).firstMatch,
                               window: window)
             }
@@ -149,6 +157,7 @@ final class PublishedAppUITests: XCTestCase {
         let button = app.buttons.matching(NSPredicate(format: "label ==[c] %@", title)).firstMatch
         try reachable(button, window: window)
         button.click()
+        app.activate()
         try record("opened", extra: ["page": title])
     }
 
