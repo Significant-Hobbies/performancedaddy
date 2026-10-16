@@ -1,0 +1,35 @@
+name: Published app window qualification
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/native-ui.yml
+      - scripts/qualify-published-ui.py
+      - Tests/PublishedAppUITests/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  published-window:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Ensure the test-project generator is available
+        run: command -v xcodegen || brew install xcodegen
+      - name: Qualify the exact published app on the isolated desktop
+        run: python3 scripts/qualify-published-ui.py --output "${{ runner.temp }}/performancedaddy-published-ui"
+      - name: Retain qualification and failures
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: published-ui-${{ github.run_id }}
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/performancedaddy-published-ui/report.json
+            ${{ runner.temp }}/performancedaddy-published-ui/*.txt
+            ${{ runner.temp }}/performancedaddy-published-ui/*.json
+            ${{ runner.temp }}/performancedaddy-published-ui/*.png
+            ${{ runner.temp }}/performancedaddy-published-ui/PublishedUI.xcresult

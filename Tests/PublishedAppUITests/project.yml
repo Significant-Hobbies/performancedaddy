@@ -1,0 +1,27 @@
+name: PerformanceDaddyPublishedUI
+options:
+  bundleIdPrefix: com.significanthobbies.qualification
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGNING_ALLOWED: NO
+targets:
+  PublishedAppUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - PublishedAppUITests.swift
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  PublishedApp:
+    build:
+      targets:
+        PublishedAppUITests: [test]
+    test:
+      targets:
+        - PublishedAppUITests
+      gatherCoverageData: false
+      parallelizable: false
