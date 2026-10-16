@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
         describe(mode);
         size_t width = CGDisplayModeGetWidth(mode), height = CGDisplayModeGetHeight(mode);
         if (restoring && (uint32_t)CGDisplayModeGetIODisplayModeID(mode) == restore) chosen = mode;
-        if (!restoring && width >= 1600 && height >= 1000 && width <= 2560 && height <= 1600 &&
+        if (!restoring && width >= 1920 && height >= 1000 && width <= 2560 && height <= 1600 &&
             width * height < chosenArea) {
             chosen = mode;
             chosenArea = width * height;
