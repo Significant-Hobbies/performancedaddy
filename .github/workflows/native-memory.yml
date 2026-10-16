@@ -1,0 +1,28 @@
+name: Paired published-app memory qualification
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/native-memory.yml
+      - scripts/measure-complete-app.py
+      - scripts/complete-app-probe.c
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired-memory:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Measure the published apps on a fresh Mac
+        run: python3 scripts/measure-complete-app.py
+      - name: Retain measurement and failures
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: published-app-memory-${{ github.run_id }}
+          path: ${{ runner.temp }}/performancedaddy-memory/report.json
+          retention-days: 7
