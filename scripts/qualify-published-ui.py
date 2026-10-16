@@ -153,12 +153,26 @@ def main():
               "inputs": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in [
                   "Tests/PublishedAppUITests/project.yml",
                   "Tests/PublishedAppUITests/PublishedAppUITests.swift",
+                  "scripts/ci-display-qualification.c",
                   "scripts/qualify-published-ui.py"]},
               "limitations": ["XCUITest reachability is not full VoiceOver traversal",
                               "No alert/load, energy, sleep/wake, hook or account-sync claim"]}
     app = None
+    display = None
+    original_mode = None
     cli = args.tool_cli
     try:
+        if not args.build_only:
+            display = out / "ci-display"
+            run("cc", str(ROOT / "scripts/ci-display-qualification.c"),
+                "-framework", "CoreGraphics", "-o", str(display))
+            configured = subprocess.run([str(display)], text=True, capture_output=True, timeout=30)
+            (out / "display.json").write_text(configured.stdout)
+            report["display"] = json.loads(configured.stdout)
+            if report["display"]["changed"]:
+                original_mode = report["display"]["before"]["id"]
+            if configured.returncode:
+                raise RuntimeError("Hosted display cannot provide the required graphical test area")
         if cli is None:
             tools = out / "tools"
             run("npm", "install", "--prefix", str(tools), "--no-audit", "--no-fund",
@@ -207,7 +221,13 @@ def main():
                 stop_owned_app(cli, app, out)
                 report["ownedAppStopped"] = True
         finally:
-            (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+            try:
+                if original_mode is not None:
+                    restored = run(str(display), "--restore", str(original_mode), timeout=30)
+                    (out / "display-restored.json").write_text(restored)
+                    report["displayRestored"] = True
+            finally:
+                (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
 
 
 if __name__ == "__main__":

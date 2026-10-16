@@ -7,6 +7,10 @@ final class PublishedAppUITests: XCTestCase {
     private var output: URL!
     private var observations: [[String: Any]] = []
 
+    override func tearDown() async throws {
+        try await MainActor.run { try captureFinal() }
+    }
+
     @MainActor
     private func prepare() throws {
         continueAfterFailure = false
@@ -55,16 +59,23 @@ final class PublishedAppUITests: XCTestCase {
     @MainActor
     func testMinimumWindowKeepsEveryPageAndItsEssentialControlsReachable() throws {
         try prepare()
-        defer { try? captureFinal() }
         let window = app.windows.firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 15))
-        let corner = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
-            .withOffset(CGVector(dx: -2, dy: -2))
-        corner.click(forDuration: 0.3,
-                     thenDragTo: corner.withOffset(CGVector(dx: -600, dy: -400)))
+        let initial = window.frame
+        resize(window, by: CGVector(dx: 140, dy: 80))
+        try record("resize-positive-control")
+        XCTAssertGreaterThan(window.frame.width, initial.width + 100, "The window resize gesture must actually work")
+        resize(window, by: CGVector(dx: -800, dy: -600))
+        let minimum = window.frame
+        resize(window, by: CGVector(dx: -100, dy: -100))
         try record("minimum-window")
-        XCTAssertEqual(window.frame.width, 980, accuracy: 2, "Measure the actual supported minimum")
-        XCTAssertEqual(window.frame.height, 800, accuracy: 2, "Measure the actual supported minimum")
+        try captureFinal()
+        XCTAssertEqual(window.frame.width, minimum.width, accuracy: 2, "A second shrink must stay at the real minimum")
+        XCTAssertEqual(window.frame.height, minimum.height, accuracy: 2, "A second shrink must stay at the real minimum")
+        let content = app.splitGroups.firstMatch
+        XCTAssertTrue(content.exists, "Inspect the native navigation content, separately from window chrome")
+        XCTAssertEqual(content.frame.width, 980, accuracy: 2, "Minimum supported content width")
+        XCTAssertEqual(content.frame.height, 800, accuracy: 2, "Minimum supported content height")
 
         let livePages = [
             ("Processes", "See what is running."),
@@ -106,6 +117,13 @@ final class PublishedAppUITests: XCTestCase {
     }
 
     @MainActor
+    private func resize(_ window: XCUIElement, by delta: CGVector) {
+        let corner = window.coordinate(withNormalizedOffset: CGVector(dx: 1, dy: 1))
+            .withOffset(CGVector(dx: -2, dy: -2))
+        corner.click(forDuration: 0.3, thenDragTo: corner.withOffset(delta))
+    }
+
+    @MainActor
     private func open(_ title: String, window: XCUIElement) throws {
         let button = app.buttons.matching(NSPredicate(format: "label ==[c] %@", title)).firstMatch
         try reachable(button, window: window)
@@ -143,6 +161,13 @@ final class PublishedAppUITests: XCTestCase {
         if let frame = app?.windows.firstMatch.frame {
             observation["window"] = ["x": frame.minX, "y": frame.minY,
                                      "width": frame.width, "height": frame.height]
+        }
+        if let screen = NSScreen.main {
+            observation["screen"] = ["width": screen.frame.width, "height": screen.frame.height,
+                                     "visibleWidth": screen.visibleFrame.width, "visibleHeight": screen.visibleFrame.height]
+        }
+        if let content = app?.splitGroups.firstMatch, content.exists {
+            observation["navigationContent"] = ["width": content.frame.width, "height": content.frame.height]
         }
         observations.append(observation)
         let data = try JSONSerialization.data(withJSONObject: observations, options: [.prettyPrinted, .sortedKeys])

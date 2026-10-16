@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/native-ui.yml
       - scripts/qualify-published-ui.py
+      - scripts/ci-display-qualification.c
       - Tests/PublishedAppUITests/**
   workflow_dispatch:
 
