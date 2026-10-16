@@ -196,6 +196,7 @@ def main():
                   "scripts/ci-display-qualification.c",
                   "scripts/qualify-published-ui.py", "Sources/PerformanceDaddy/DashboardView.swift"]},
               "limitations": ["XCUITest reachability is not full VoiceOver traversal",
+                              "Layout uses the app Pause control; continuous-live rendering remains unqualified",
                               "No alert/load, energy, sleep/wake, hook or account-sync claim"]}
     app = None
     display = None
@@ -244,6 +245,9 @@ def main():
         }, allow_test_failure=args.expect_navigation_overflow)
         observations = json.loads((out / "ui-observations.json").read_text())
         qualified = [row["page"] for row in observations if row["stage"] == "page-qualified"]
+        if not any(row["stage"] == "sampling-paused" for row in observations):
+            raise RuntimeError("Layout qualification requires paused live sampling")
+        report["samplingPaused"] = True
         counts = test_result.get("data", {}).get("summary", {}).get("counts", {})
         if args.expect_navigation_overflow:
             failures = test_result.get("data", {}).get("diagnostics", {}).get("testFailures", [])

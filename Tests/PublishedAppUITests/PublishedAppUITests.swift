@@ -62,6 +62,13 @@ final class PublishedAppUITests: XCTestCase {
         try prepare()
         let window = app.windows.firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 15))
+        // Qualify static layout with the owned app's sampler paused. Continuous
+        // table updates add unrelated redraw work during native capture.
+        let pause = app.buttons["Pause"]
+        try reachable(pause, window: window)
+        pause.click()
+        XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 15))
+        try record("sampling-paused")
         let initial = window.frame
         resize(window, by: CGVector(dx: 140, dy: 0))
         try record("resize-positive-control")
@@ -117,7 +124,7 @@ final class PublishedAppUITests: XCTestCase {
             ))
                 .firstMatch.waitForExistence(timeout: 10), page)
             try editSearch(app.textFields["Search processes, projects and ports"], window: window)
-            for title in ["Pause", "Refresh processes", "Help with processes and measurements", "Stop…"] {
+            for title in ["Resume", "Refresh processes", "Help with processes and measurements", "Stop…"] {
                 try reachable(app.descendants(matching: .any).matching(identifier: title).firstMatch,
                               window: window)
             }
