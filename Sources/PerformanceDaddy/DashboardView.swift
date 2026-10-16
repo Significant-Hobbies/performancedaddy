@@ -21,7 +21,6 @@ struct DashboardView: View {
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 220)
         } detail: {
             ZStack {
-                PerformanceTheme.fog.ignoresSafeArea()
                 if let page = LivePage(rawValue: destination) {
                     LiveWorkloadsView(model: live, page: page)
                 } else if destination == "Configuration" {
@@ -80,10 +79,14 @@ struct DashboardView: View {
                         if let error = model.errorMessage, model.report != nil {
                             Text(error).font(.callout).foregroundStyle(PerformanceTheme.coral).padding(.horizontal, 28)
                         }
-                        diagnosisContent
+                        ScrollView {
+                            diagnosisContent.frame(maxWidth: .infinity)
+                        }
                     }
                 }
             }
+            .background(PerformanceTheme.fog)
+            .clipped()
         }
         .sheet(item: $model.importedProfile) { ImportedProfileView(profile: $0) }
         .sheet(isPresented: $model.preparingFollowUp) {
