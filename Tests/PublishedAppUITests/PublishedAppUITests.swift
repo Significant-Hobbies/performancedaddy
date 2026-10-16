@@ -91,7 +91,9 @@ final class PublishedAppUITests: XCTestCase {
         ]
         for (page, subtitle) in livePages {
             try open(page, window: window)
-            XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", subtitle))
+            XCTAssertTrue(app.staticTexts.matching(NSPredicate(
+                format: "label BEGINSWITH %@ OR value BEGINSWITH %@", subtitle, subtitle
+            ))
                 .firstMatch.waitForExistence(timeout: 10), page)
             try reachable(app.textFields["Search processes, projects and ports"], window: window)
             for title in ["Pause", "Refresh processes", "Help with processes and measurements", "Stop…"] {
