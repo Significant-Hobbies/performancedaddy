@@ -6,6 +6,7 @@ final class PublishedAppUITests: XCTestCase {
     private var app: XCUIApplication!
     private var output: URL!
     private var observations: [[String: Any]] = []
+    private var minimumWindow: CGRect!
 
     override func tearDown() async throws {
         try await MainActor.run { try captureFinal() }
@@ -68,6 +69,7 @@ final class PublishedAppUITests: XCTestCase {
         resize(window, by: CGVector(dx: -800, dy: -600))
         let minimum = window.frame
         resize(window, by: CGVector(dx: -100, dy: -100))
+        minimumWindow = window.frame
         try record("minimum-window")
         try captureFinal()
         XCTAssertEqual(window.frame.width, minimum.width, accuracy: 2, "A second shrink must stay at the real minimum")
@@ -75,7 +77,11 @@ final class PublishedAppUITests: XCTestCase {
         let content = app.splitGroups.firstMatch
         XCTAssertTrue(content.exists, "Inspect the native navigation content, separately from window chrome")
         XCTAssertEqual(content.frame.width, 980, accuracy: 2, "Minimum supported content width")
-        XCTAssertEqual(content.frame.height, 800, accuracy: 2, "Minimum supported content height")
+        // The native split-group includes the title-bar area. Its divider spans
+        // the 800-point content layout; the observed full window is 852 high.
+        XCTAssertTrue(app.splitters.firstMatch.exists)
+        XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2,
+                       "Minimum supported content layout height")
 
         let livePages = [
             ("Processes", "See what is running."),
@@ -146,6 +152,13 @@ final class PublishedAppUITests: XCTestCase {
 
     @MainActor
     private func capture(_ page: String) throws {
+        let window = app.windows.firstMatch
+        XCTAssertEqual(window.frame.width, minimumWindow.width, accuracy: 2,
+                       "Page navigation must not enlarge the minimum window")
+        XCTAssertEqual(window.frame.height, minimumWindow.height, accuracy: 2,
+                       "Page navigation must not enlarge the minimum window")
+        XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2,
+                       "Every page retains the minimum content layout")
         let name = page.lowercased().replacingOccurrences(of: " ", with: "-")
         try app.screenshot().pngRepresentation.write(to: output.appendingPathComponent("\(name).png"))
         try app.debugDescription.write(to: output.appendingPathComponent("\(name)-ax.txt"),
@@ -167,7 +180,10 @@ final class PublishedAppUITests: XCTestCase {
                                      "visibleWidth": screen.visibleFrame.width, "visibleHeight": screen.visibleFrame.height]
         }
         if let content = app?.splitGroups.firstMatch, content.exists {
-            observation["navigationContent"] = ["width": content.frame.width, "height": content.frame.height]
+            observation["navigationSplitGroup"] = ["width": content.frame.width, "height": content.frame.height]
+        }
+        if let divider = app?.splitters.firstMatch, divider.exists {
+            observation["contentLayoutHeight"] = divider.frame.height
         }
         observations.append(observation)
         let data = try JSONSerialization.data(withJSONObject: observations, options: [.prettyPrinted, .sortedKeys])
