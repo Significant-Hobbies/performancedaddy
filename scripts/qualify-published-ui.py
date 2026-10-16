@@ -183,7 +183,7 @@ def main():
         mcp(cli, out, "test", "test", {
             "xctestrunPath": str(configuration),
             "extraArgs": ["-resultBundlePath", str(out / "PublishedUI.xcresult"),
-                          "-parallel-testing-enabled", "NO", "-test-iterations", "1"],
+                          "-parallel-testing-enabled", "NO"],
         })
         observations = json.loads((out / "ui-observations.json").read_text())
         qualified = [row["page"] for row in observations if row["stage"] == "page-qualified"]
