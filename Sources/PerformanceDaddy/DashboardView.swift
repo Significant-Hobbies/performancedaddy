@@ -80,7 +80,9 @@ struct DashboardView: View {
                         if let error = model.errorMessage, model.report != nil {
                             Text(error).font(.callout).foregroundStyle(PerformanceTheme.coral).padding(.horizontal, 28)
                         }
-                        diagnosisContent
+                        ScrollView {
+                            diagnosisContent.frame(maxWidth: .infinity)
+                        }
                     }
                 }
             }

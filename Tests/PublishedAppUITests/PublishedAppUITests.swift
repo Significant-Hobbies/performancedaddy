@@ -1,7 +1,7 @@
 import AppKit
 import XCTest
 
-/// Runs only on an ephemeral graphical CI Mac, against the unchanged published app.
+/// Runs only on an ephemeral graphical CI Mac, against one exact app bundle.
 final class PublishedAppUITests: XCTestCase {
     private var app: XCUIApplication!
     private var output: URL!
@@ -83,6 +83,20 @@ final class PublishedAppUITests: XCTestCase {
         XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2,
                        "Minimum supported content layout height")
 
+        let widths = (ProcessInfo.processInfo.environment["PD_UI_WIDTHS"] ?? "980")
+            .split(separator: ",").compactMap { Double($0) }
+        XCTAssertFalse(widths.isEmpty)
+        for width in widths {
+            resize(window, by: CGVector(dx: width - window.frame.width, dy: 0))
+            minimumWindow = window.frame
+            XCTAssertEqual(window.frame.width, width, accuracy: 2)
+            try checkEveryPage(window: window)
+        }
+        try record("completed", extra: ["pages": widths.count * 8])
+    }
+
+    @MainActor
+    private func checkEveryPage(window: XCUIElement) throws {
         let livePages = [
             ("Processes", "See what is running."),
             ("Ports", "Find a local listener"),
@@ -121,7 +135,6 @@ final class PublishedAppUITests: XCTestCase {
             .firstMatch, window: window)
         try reachable(app.buttons["Diagnose terminal startup…"], window: window)
         try capture("Diagnose")
-        try record("completed", extra: ["pages": 8])
     }
 
     @MainActor
@@ -161,10 +174,22 @@ final class PublishedAppUITests: XCTestCase {
                        "Page navigation must not enlarge the minimum window")
         XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2,
                        "Every page retains the minimum content layout")
-        let name = page.lowercased().replacingOccurrences(of: " ", with: "-")
+        let name = "\(Int(window.frame.width))-" + page.lowercased().replacingOccurrences(of: " ", with: "-")
         try app.screenshot().pngRepresentation.write(to: output.appendingPathComponent("\(name).png"))
         try app.debugDescription.write(to: output.appendingPathComponent("\(name)-ax.txt"),
                                        atomically: true, encoding: .utf8)
+        try record("layout-observed", extra: ["page": page])
+        let content = app.splitGroups.firstMatch
+        XCTAssertTrue(content.exists)
+        XCTAssertLessThanOrEqual(content.frame.height, window.frame.height + 2,
+                                 "Navigation split group must fit inside the window")
+        XCTAssertTrue(window.frame.insetBy(dx: -2, dy: -2).contains(content.frame),
+                      "Navigation split group must fit inside the window")
+        for title in ["Processes", "Ports", "Agent sessions", "Memory", "Fans & heat",
+                      "App access", "Configuration", "Diagnose"] {
+            let button = app.buttons.matching(NSPredicate(format: "label ==[c] %@", title)).firstMatch
+            try reachable(button, window: window)
+        }
         try record("page-qualified", extra: ["page": page])
     }
 

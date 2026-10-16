@@ -1,4 +1,4 @@
-name: Published app window qualification
+name: Window layout regression
 
 on:
   pull_request:
@@ -7,30 +7,46 @@ on:
       - scripts/qualify-published-ui.py
       - scripts/ci-display-qualification.c
       - Tests/PublishedAppUITests/**
+      - Sources/PerformanceDaddy/**
+      - Package.swift
+      - Package.resolved
+      - scripts/package_resources.py
+      - scripts/sparkle*.py
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  published-window:
+  window-layout:
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [source-candidate, published-negative-control]
     steps:
       - uses: actions/checkout@v5
       - name: Ensure the test-project generator is available
         run: command -v xcodegen || brew install xcodegen
-      - name: Qualify the exact published app on the isolated desktop
-        run: python3 scripts/qualify-published-ui.py --output "${{ runner.temp }}/performancedaddy-published-ui"
+      - name: Verify the candidate or reproduce the published regression
+        env:
+          APP_KIND: ${{ matrix.app }}
+        run: |
+          if [ "$APP_KIND" = source-candidate ]; then
+            python3 scripts/qualify-published-ui.py --candidate --output "${{ runner.temp }}/performancedaddy-window-ui"
+          else
+            python3 scripts/qualify-published-ui.py --expect-navigation-overflow --output "${{ runner.temp }}/performancedaddy-window-ui"
+          fi
       - name: Retain qualification and failures
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: published-ui-${{ github.run_id }}
+          name: window-ui-${{ matrix.app }}-${{ github.run_id }}
           retention-days: 7
           path: |
-            ${{ runner.temp }}/performancedaddy-published-ui/report.json
-            ${{ runner.temp }}/performancedaddy-published-ui/*.txt
-            ${{ runner.temp }}/performancedaddy-published-ui/*.json
-            ${{ runner.temp }}/performancedaddy-published-ui/*.png
-            ${{ runner.temp }}/performancedaddy-published-ui/PublishedUI.xcresult
+            ${{ runner.temp }}/performancedaddy-window-ui/report.json
+            ${{ runner.temp }}/performancedaddy-window-ui/*.txt
+            ${{ runner.temp }}/performancedaddy-window-ui/*.json
+            ${{ runner.temp }}/performancedaddy-window-ui/*.png
+            ${{ runner.temp }}/performancedaddy-window-ui/PublishedUI.xcresult

@@ -9,6 +9,8 @@ import plistlib
 import shutil
 import subprocess
 import urllib.request
+import package_resources
+import sparkle_support
 
 ROOT = Path(__file__).resolve().parent.parent
 DMG_SHA256 = "cc7b6e68600f84fefcdff54d39d6eaf5719ecfe4037b8c98386f882aed51f551"
@@ -23,16 +25,16 @@ def run(*command, timeout=180, **kwargs):
                           timeout=timeout, **kwargs).stdout
 
 
-def mcp(cli, out, label, operation, arguments):
-    command = ["node", str(cli), "macos", operation, "--json", json.dumps(arguments),
+def mcp(cli, out, label, operation, arguments, *, workflow="macos", allow_test_failure=False):
+    command = ["node", str(cli), workflow, operation, "--json", json.dumps(arguments),
                "--output", "json"]
     result = subprocess.run(command, text=True, capture_output=True, timeout=900, cwd=ROOT)
     (out / f"{label}.stdout.json").write_text(result.stdout)
     (out / f"{label}.stderr.txt").write_text(result.stderr)
-    if result.returncode:
-        raise RuntimeError(f"{label}: XcodeBuildMCP exited {result.returncode}; see retained logs")
     payload = json.loads(result.stdout)
-    if payload.get("didError") is not False:
+    failed_test = (operation == "test" and allow_test_failure and
+                   payload.get("data", {}).get("summary", {}).get("counts", {}).get("failed") == 1)
+    if (result.returncode or payload.get("didError") is not False) and not failed_test:
         raise RuntimeError(f"{label}: missing successful structured XcodeBuildMCP result")
     return payload
 
@@ -83,12 +85,33 @@ def published_app(out):
     info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
     if str(info["CFBundleVersion"]) != "25" or info["CFBundleShortVersionString"] != "0.2.20":
         raise RuntimeError("Unexpected published version/build")
-    run("/System/Library/Frameworks/CoreServices.framework/Frameworks/"
-        "LaunchServices.framework/Support/lsregister", "-f", str(app))
     return app, info
 
 
-def configure_run(original, app, info, home, out):
+def candidate_app(cli, out):
+    mcp(cli, out, "candidate-build", "build", {
+        "packagePath": str(ROOT), "configuration": "release",
+    }, workflow="swift-package")
+    products = (ROOT / ".build/release").resolve(strict=True)
+    app = out / "PerformanceDaddy.app"
+    contents = app / "Contents"
+    (contents / "MacOS").mkdir(parents=True)
+    resources = contents / "Resources"
+    package_resources.copy_resources(products, resources)
+    shutil.copy2(products / "PerformanceDaddy", contents / "MacOS/PerformanceDaddy")
+    shutil.copy2(ROOT / "Support/PerformanceDaddy.icns", resources)
+    info = plistlib.loads((ROOT / "Support/Info.plist").read_bytes())
+    info.update(CFBundleIdentifier="com.significanthobbies.performancedaddy.qualification",
+                CFBundleShortVersionString="0.0.0", CFBundleVersion="1")
+    (contents / "Info.plist").write_bytes(plistlib.dumps(info))
+    sparkle_support.embed(app)
+    sparkle_support.sign(app, "-", timestamp=False)
+    run("codesign", "--force", "--deep", "--sign", "-", str(app))
+    run("codesign", "--verify", "--deep", "--strict", str(app))
+    return app, info
+
+
+def configure_run(original, app, info, home, out, widths):
     document = plistlib.loads(original.read_bytes())
     version = document.get("__xctestrun_metadata__", {}).get("FormatVersion", 1)
     if version == 1:
@@ -110,6 +133,7 @@ def configure_run(original, app, info, home, out):
     target.setdefault("EnvironmentVariables", {}).update({
         "PD_EPHEMERAL_UI_RUNNER": "true", "PD_EXPECTED_APP_PATH": str(app),
         "PD_PRIVATE_HOME": str(home), "PD_UI_OUTPUT": str(out),
+        "PD_UI_WIDTHS": ",".join(map(str, widths)),
     })
     target["ParallelizationEnabled"] = False
     target["TestLanguage"] = "en"
@@ -138,14 +162,24 @@ def main():
     parser.add_argument("--build-only", action="store_true")
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--tool-cli", type=Path)
+    parser.add_argument("--candidate", action="store_true",
+                        help="Build and qualify an ad-hoc signed source candidate; never publish it")
+    parser.add_argument("--expect-navigation-overflow", action="store_true",
+                        help="Require the known published-build navigation failure as a negative control")
     args = parser.parse_args()
+    if args.expect_navigation_overflow and (args.candidate or args.build_only):
+        parser.error("The negative control requires the unchanged published app")
     if os.uname().sysname != "Darwin":
         raise RuntimeError("Requires macOS")
     if not args.build_only and os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("GUI execution is restricted to an ephemeral GitHub Mac")
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
-    report = {"scope": "Published 0.2.20/build25 minimum-window navigation and controls",
+    widths = [980, 1180, 1440] if args.candidate else [980]
+    report = {"scope": "Window bounds, all sidebar navigation and selected essential controls",
+              "appKind": "source-candidate" if args.candidate else "published-0.2.20-build25",
+              "expectedNavigationOverflow": args.expect_navigation_overflow,
+              "windowWidths": widths,
               "source": run("git", "-C", str(ROOT), "rev-parse", "HEAD").strip(),
               "os": run("sw_vers"), "arch": run("uname", "-m").strip(),
               "buildOnly": args.build_only, "result": "incomplete",
@@ -154,7 +188,7 @@ def main():
                   "Tests/PublishedAppUITests/project.yml",
                   "Tests/PublishedAppUITests/PublishedAppUITests.swift",
                   "scripts/ci-display-qualification.c",
-                  "scripts/qualify-published-ui.py"]},
+                  "scripts/qualify-published-ui.py", "Sources/PerformanceDaddy/DashboardView.swift"]},
               "limitations": ["XCUITest reachability is not full VoiceOver traversal",
                               "No alert/load, energy, sleep/wake, hook or account-sync claim"]}
     app = None
@@ -186,28 +220,43 @@ def main():
         if args.build_only:
             report["result"] = "runner-built-not-executed"
             return
-        app, info = published_app(out)
+        app, info = candidate_app(cli, out) if args.candidate else published_app(out)
+        run("/System/Library/Frameworks/CoreServices.framework/Frameworks/"
+            "LaunchServices.framework/Support/lsregister", "-f", str(app))
         executable = app / "Contents/MacOS/PerformanceDaddy"
-        report["published"] = {"dmgSha256": DMG_SHA256, "bundleId": info["CFBundleIdentifier"],
+        report["app"] = {"dmgSha256": None if args.candidate else DMG_SHA256,
+                               "bundleId": info["CFBundleIdentifier"],
                                "version": info["CFBundleShortVersionString"], "build": info["CFBundleVersion"],
                                "executableSha256": hashlib.sha256(executable.read_bytes()).hexdigest()}
         home = out / "private-home"
         home.mkdir()
-        configuration = configure_run(configuration, app, info, home, out)
-        mcp(cli, out, "test", "test", {
+        configuration = configure_run(configuration, app, info, home, out, widths)
+        test_result = mcp(cli, out, "test", "test", {
             "xctestrunPath": str(configuration),
             "extraArgs": ["-resultBundlePath", str(out / "PublishedUI.xcresult"),
                           "-parallel-testing-enabled", "NO"],
-        })
+        }, allow_test_failure=args.expect_navigation_overflow)
         observations = json.loads((out / "ui-observations.json").read_text())
         qualified = [row["page"] for row in observations if row["stage"] == "page-qualified"]
-        if qualified != PAGES or observations[-1].get("stage") != "completed":
-            raise RuntimeError("Test returned without completing all eight required pages")
-        if hashlib.sha256(executable.read_bytes()).hexdigest() != report["published"]["executableSha256"]:
-            raise RuntimeError("Published executable changed during qualification")
+        counts = test_result.get("data", {}).get("summary", {}).get("counts", {})
+        if args.expect_navigation_overflow:
+            failures = test_result.get("data", {}).get("diagnostics", {}).get("testFailures", [])
+            last = observations[-1]
+            if (counts != {"passed": 0, "failed": 1, "skipped": 0} or
+                    not any("Navigation split group must fit inside the window" in str(f) for f in failures) or
+                    last.get("stage") != "layout-observed" or last.get("page") != "Diagnose" or
+                    last.get("navigationSplitGroup", {}).get("height", 0) <= last["window"]["height"] or
+                    qualified != PAGES[:-1]):
+                raise RuntimeError("The published app did not fail at the expected navigation overflow")
+        elif (counts != {"passed": 1, "failed": 0, "skipped": 0} or
+              qualified != PAGES * len(widths) or observations[-1].get("stage") != "completed"):
+            raise RuntimeError("Test did not qualify every page at every required width")
+        if hashlib.sha256(executable.read_bytes()).hexdigest() != report["app"]["executableSha256"]:
+            raise RuntimeError("App executable changed during qualification")
         run("codesign", "--verify", "--deep", "--strict", str(app))
         report["pages"] = qualified
-        report["result"] = "qualified"
+        report["result"] = ("known-published-overflow-reproduced" if args.expect_navigation_overflow
+                            else "source-candidate-qualified" if args.candidate else "published-app-qualified")
     except Exception as error:
         report["result"] = "unqualified"
         report["error"] = str(error)
