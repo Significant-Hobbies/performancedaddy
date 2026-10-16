@@ -21,7 +21,6 @@ struct DashboardView: View {
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 220)
         } detail: {
             ZStack {
-                PerformanceTheme.fog.ignoresSafeArea()
                 if let page = LivePage(rawValue: destination) {
                     LiveWorkloadsView(model: live, page: page)
                 } else if destination == "Configuration" {
@@ -86,6 +85,8 @@ struct DashboardView: View {
                     }
                 }
             }
+            .background(PerformanceTheme.fog)
+            .clipped()
         }
         .sheet(item: $model.importedProfile) { ImportedProfileView(profile: $0) }
         .sheet(isPresented: $model.preparingFollowUp) {
