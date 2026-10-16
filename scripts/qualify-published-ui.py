@@ -28,7 +28,7 @@ def run(*command, timeout=180, **kwargs):
 def mcp(cli, out, label, operation, arguments, *, workflow="macos", allow_test_failure=False):
     command = ["node", str(cli), workflow, operation, "--json", json.dumps(arguments),
                "--output", "json"]
-    result = subprocess.run(command, text=True, capture_output=True, timeout=900, cwd=ROOT)
+    result = subprocess.run(command, text=True, capture_output=True, timeout=1500 if operation == "test" else 900, cwd=ROOT)
     (out / f"{label}.stdout.json").write_text(result.stdout)
     (out / f"{label}.stderr.txt").write_text(result.stderr)
     payload = json.loads(result.stdout)
@@ -167,7 +167,11 @@ def main():
                         help="Build and qualify an ad-hoc signed source candidate; never publish it")
     parser.add_argument("--expect-navigation-overflow", action="store_true",
                         help="Require the known published-build navigation failure as a negative control")
+    parser.add_argument("--window-width", type=int, choices=[980, 1180, 1440],
+                        help="Qualify one candidate width per isolated CI job")
     args = parser.parse_args()
+    if args.window_width is not None and not args.candidate:
+        parser.error("A specific window width requires a source candidate")
     if args.expect_navigation_overflow and (args.candidate or args.build_only):
         parser.error("The negative control requires the unchanged published app")
     if os.uname().sysname != "Darwin":
@@ -176,7 +180,8 @@ def main():
         raise RuntimeError("GUI execution is restricted to an ephemeral GitHub Mac")
     out = args.output.resolve()
     out.mkdir(parents=True, exist_ok=False)
-    widths = [980, 1180, 1440] if args.candidate else [980]
+    widths = ([args.window_width] if args.window_width is not None
+              else [980, 1180, 1440] if args.candidate else [980])
     report = {"scope": "Window bounds, all sidebar navigation and selected essential controls",
               "appKind": "source-candidate" if args.candidate else "published-0.2.20-build25",
               "expectedNavigationOverflow": args.expect_navigation_overflow,

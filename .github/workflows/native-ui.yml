@@ -24,7 +24,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [source-candidate, published-negative-control]
+        include:
+          - app: source-candidate
+            width: 980
+          - app: source-candidate
+            width: 1180
+          - app: source-candidate
+            width: 1440
+          - app: published-negative-control
+            width: 980
     steps:
       - uses: actions/checkout@v5
       - name: Ensure the test-project generator is available
@@ -32,9 +40,10 @@ jobs:
       - name: Verify the candidate or reproduce the published regression
         env:
           APP_KIND: ${{ matrix.app }}
+          WINDOW_WIDTH: ${{ matrix.width }}
         run: |
           if [ "$APP_KIND" = source-candidate ]; then
-            python3 scripts/qualify-published-ui.py --candidate --output "${{ runner.temp }}/performancedaddy-window-ui"
+            python3 scripts/qualify-published-ui.py --candidate --window-width "$WINDOW_WIDTH" --output "${{ runner.temp }}/performancedaddy-window-ui"
           else
             python3 scripts/qualify-published-ui.py --expect-navigation-overflow --output "${{ runner.temp }}/performancedaddy-window-ui"
           fi
@@ -42,7 +51,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: window-ui-${{ matrix.app }}-${{ github.run_id }}
+          name: window-ui-${{ matrix.app }}-${{ matrix.width }}-${{ github.run_id }}
           retention-days: 7
           path: |
             ${{ runner.temp }}/performancedaddy-window-ui/report.json
