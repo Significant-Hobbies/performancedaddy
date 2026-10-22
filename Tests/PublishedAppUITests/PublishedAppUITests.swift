@@ -132,8 +132,8 @@ final class PublishedAppUITests: XCTestCase {
         pause.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 15))
         try record("sampling-paused")
-        resize(window, by: CGVector(dx: 20, dy: 0))
-        XCTAssertGreaterThan(window.frame.width, minimumWindow.width + 10)
+        resize(window, by: CGVector(dx: 140, dy: 0))
+        XCTAssertGreaterThan(window.frame.width, minimumWindow.width + 100)
         resizeToWidth(window, width: minimumWindow.width)
         XCTAssertEqual(window.frame.width, minimumWindow.width, accuracy: 2)
 
