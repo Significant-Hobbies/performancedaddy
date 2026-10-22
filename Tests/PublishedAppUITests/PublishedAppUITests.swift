@@ -1,7 +1,7 @@
 import AppKit
 import XCTest
 
-/// Runs only on an ephemeral graphical CI Mac, against one exact app bundle.
+/// Runs against one exact isolated bundle; local runs require a private source candidate.
 final class PublishedAppUITests: XCTestCase {
     private var app: XCUIApplication!
     private var output: URL!
@@ -9,14 +9,15 @@ final class PublishedAppUITests: XCTestCase {
     private var minimumWindow: CGRect!
 
     override func tearDown() async throws {
-        try await MainActor.run { try captureFinal() }
+        try await MainActor.run { try captureFinal(attach: true) }
     }
 
     @MainActor
     private func prepare() throws {
         continueAfterFailure = false
         let env = ProcessInfo.processInfo.environment
-        guard env["PD_EPHEMERAL_UI_RUNNER"] == "true",
+        let localOwned = env["PD_LOCAL_OWNED_UI_RUNNER"] == "true"
+        guard env["PD_EPHEMERAL_UI_RUNNER"] == "true" || localOwned,
               let path = env["PD_EXPECTED_APP_PATH"],
               let home = env["PD_PRIVATE_HOME"],
               let out = env["PD_UI_OUTPUT"],
@@ -26,6 +27,22 @@ final class PublishedAppUITests: XCTestCase {
                           userInfo: [NSLocalizedDescriptionKey: "Requires the isolated published-app harness"])
         }
         output = URL(fileURLWithPath: out)
+        if localOwned {
+            let outputPath = output.resolvingSymlinksInPath()
+            guard identifier == env["PD_EXPECTED_APP_BUNDLE_IDENTIFIER"],
+                  identifier.hasPrefix("com.significanthobbies.performancedaddy.qualification.r"),
+                  URL(fileURLWithPath: path).resolvingSymlinksInPath().deletingLastPathComponent() == outputPath,
+                  URL(fileURLWithPath: home).resolvingSymlinksInPath().deletingLastPathComponent() == outputPath,
+                  NSWorkspace.shared.runningApplications.allSatisfy({ $0.bundleIdentifier != identifier }) else {
+                throw NSError(domain: "PublishedAppUITests", code: 4,
+                              userInfo: [NSLocalizedDescriptionKey: "Local runs require a new private candidate, private home and no existing candidate process"])
+            }
+            // The signed runner stays sandboxed. Transport evidence through
+            // XCTest attachments instead of granting access to the checkout.
+            output = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: false,
+                                                   attributes: [.posixPermissions: 0o700])
+        }
         guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier)?
             .standardizedFileURL.path == URL(fileURLWithPath: path).standardizedFileURL.path else {
             throw NSError(domain: "PublishedAppUITests", code: 2,
@@ -34,6 +51,7 @@ final class PublishedAppUITests: XCTestCase {
         app = XCUIApplication(bundleIdentifier: identifier)
         app.launchEnvironment["CFFIXED_USER_HOME"] = home
         app.launch()
+        app.activate()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15))
         let running = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == identifier }
         guard running.count == 1,
@@ -48,11 +66,19 @@ final class PublishedAppUITests: XCTestCase {
     }
 
     @MainActor
-    private func captureFinal() throws {
+    private func captureFinal(attach: Bool = false) throws {
         if let app, let output {
             try app.debugDescription.write(to: output.appendingPathComponent("final-ax.txt"),
                                            atomically: true, encoding: .utf8)
-            try app.screenshot().pngRepresentation.write(to: output.appendingPathComponent("final.png"))
+            try app.windows.firstMatch.screenshot().pngRepresentation.write(to: output.appendingPathComponent("final.png"))
+            if attach && ProcessInfo.processInfo.environment["PD_LOCAL_OWNED_UI_RUNNER"] == "true" {
+                for artifact in try FileManager.default.contentsOfDirectory(at: output, includingPropertiesForKeys: nil) {
+                    let attachment = XCTAttachment(contentsOfFile: artifact)
+                    attachment.name = artifact.lastPathComponent
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+            }
         }
         // The outer harness stops only the exact published executable it owns.
     }
@@ -62,6 +88,21 @@ final class PublishedAppUITests: XCTestCase {
         try prepare()
         let window = app.windows.firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 15))
+        if ProcessInfo.processInfo.environment["PD_LOCAL_OWNED_UI_RUNNER"] == "true",
+           let screen = NSScreen.main {
+            // Keep pointer-based checks on one visible display. Do not change
+            // display modes or move any other application's window.
+            let frame = window.frame
+            let x = screen.visibleFrame.minX + 20
+            let y = screen.frame.maxY - screen.visibleFrame.maxY + 20
+            let title = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
+                .withOffset(CGVector(dx: 0, dy: 10))
+            title.click(forDuration: 0.3, thenDragTo: title.withOffset(
+                CGVector(dx: x - frame.minX, dy: y - frame.minY)))
+            try record("local-window-positioned")
+            XCTAssertEqual(window.frame.minX, x, accuracy: 2)
+            XCTAssertEqual(window.frame.minY, y, accuracy: 2)
+        }
         let initial = window.frame
         resize(window, by: CGVector(dx: 140, dy: 0))
         try record("resize-positive-control")
@@ -92,9 +133,9 @@ final class PublishedAppUITests: XCTestCase {
         pause.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         XCTAssertTrue(app.buttons["Resume"].waitForExistence(timeout: 15))
         try record("sampling-paused")
-        resize(window, by: CGVector(dx: 20, dy: 0))
-        XCTAssertGreaterThan(window.frame.width, minimumWindow.width + 10)
-        resize(window, by: CGVector(dx: minimumWindow.width - window.frame.width, dy: 0))
+        resize(window, by: CGVector(dx: 140, dy: 0))
+        XCTAssertGreaterThan(window.frame.width, minimumWindow.width + 100)
+        resizeToWidth(window, width: minimumWindow.width)
         XCTAssertEqual(window.frame.width, minimumWindow.width, accuracy: 2)
 
         if ProcessInfo.processInfo.environment["PD_EXPECT_NAVIGATION_OVERFLOW"] == "true" {
@@ -108,7 +149,7 @@ final class PublishedAppUITests: XCTestCase {
             .split(separator: ",").compactMap { Double($0) }
         XCTAssertFalse(widths.isEmpty)
         for width in widths {
-            resize(window, by: CGVector(dx: width - window.frame.width, dy: 0))
+            resizeToWidth(window, width: width)
             minimumWindow = window.frame
             XCTAssertEqual(window.frame.width, width, accuracy: 2)
             try checkEveryPage(window: window)
@@ -167,6 +208,16 @@ final class PublishedAppUITests: XCTestCase {
     }
 
     @MainActor
+    private func resizeToWidth(_ window: XCUIElement, width: Double) {
+        for _ in 0..<4 {
+            if abs(window.frame.width - width) <= 2 { return }
+            // Pointer drags are not exact window-coordinate assignments.
+            // Re-observe the real frame; keep the strict final size assertion.
+            resize(window, by: CGVector(dx: width - window.frame.width, dy: 0))
+        }
+    }
+
+    @MainActor
     private func open(_ title: String, window: XCUIElement) throws {
         let button = app.buttons.matching(NSPredicate(format: "label ==[c] %@", title)).firstMatch
         try reachable(button, window: window)
@@ -216,7 +267,7 @@ final class PublishedAppUITests: XCTestCase {
         XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2,
                        "Every page retains the minimum content layout")
         let name = "\(Int(window.frame.width))-" + page.lowercased().replacingOccurrences(of: " ", with: "-")
-        try app.screenshot().pngRepresentation.write(to: output.appendingPathComponent("\(name).png"))
+        try window.screenshot().pngRepresentation.write(to: output.appendingPathComponent("\(name).png"))
         try app.debugDescription.write(to: output.appendingPathComponent("\(name)-ax.txt"),
                                        atomically: true, encoding: .utf8)
         try record("layout-observed", extra: ["page": page])
