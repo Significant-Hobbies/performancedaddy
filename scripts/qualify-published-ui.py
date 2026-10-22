@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Qualify exact published-app UI on an ephemeral Mac; --build-only never launches UI."""
+"""Qualify isolated app UI on CI or an owned local candidate; build-only never launches UI."""
 import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import subprocess
 import urllib.request
@@ -39,7 +40,7 @@ def mcp(cli, out, label, operation, arguments, *, workflow="macos", allow_test_f
     return payload
 
 
-def build_runner(cli, out):
+def build_runner(cli, out, local_owned=False):
     project = out / "project"
     project.mkdir()
     # XcodeGen resolves source paths relative to its output project directory.
@@ -55,7 +56,8 @@ def build_runner(cli, out):
         "scheme": "PublishedApp", "configuration": "Debug",
         "derivedDataPath": str(derived), "buildForTesting": True,
         "testProductsPath": str(products),
-        "extraArgs": ["CODE_SIGNING_ALLOWED=NO"],
+        "extraArgs": (["CODE_SIGNING_ALLOWED=YES", "CODE_SIGNING_REQUIRED=YES", "CODE_SIGN_IDENTITY=-"]
+                      if local_owned else ["CODE_SIGNING_ALLOWED=NO"]),
     })
     candidates = []
     for path in result.get("data", {}).get("artifacts", {}).get("xctestrunPaths", []):
@@ -88,7 +90,12 @@ def published_app(out):
     return app, info
 
 
-def candidate_app(cli, out):
+def local_candidate_identifier(out):
+    return "com.significanthobbies.performancedaddy.qualification.r" + hashlib.sha256(
+        str(out.resolve()).encode()).hexdigest()[:12]
+
+
+def candidate_app(cli, out, local_owned=False):
     mcp(cli, out, "candidate-build", "build", {
         "packagePath": str(ROOT), "configuration": "release",
     }, workflow="swift-package")
@@ -101,7 +108,8 @@ def candidate_app(cli, out):
     shutil.copy2(products / "PerformanceDaddy", contents / "MacOS/PerformanceDaddy")
     shutil.copy2(ROOT / "Support/PerformanceDaddy.icns", resources)
     info = plistlib.loads((ROOT / "Support/Info.plist").read_bytes())
-    info.update(CFBundleIdentifier="com.significanthobbies.performancedaddy.qualification",
+    info.update(CFBundleIdentifier=(local_candidate_identifier(out) if local_owned
+                                   else "com.significanthobbies.performancedaddy.qualification"),
                 CFBundleShortVersionString="0.0.0", CFBundleVersion="1")
     (contents / "Info.plist").write_bytes(plistlib.dumps(info))
     sparkle_support.embed(app)
@@ -111,7 +119,7 @@ def candidate_app(cli, out):
     return app, info
 
 
-def configure_run(original, app, info, home, out, widths, expect_overflow=False):
+def configure_run(original, app, info, home, out, widths, expect_overflow=False, local_owned=False):
     document = plistlib.loads(original.read_bytes())
     version = document.get("__xctestrun_metadata__", {}).get("FormatVersion", 1)
     if version == 1:
@@ -131,7 +139,9 @@ def configure_run(original, app, info, home, out, widths, expect_overflow=False)
     target["UITargetAppBundleIdentifier"] = info["CFBundleIdentifier"]
     target["UITargetAppEnvironmentVariables"] = {"CFFIXED_USER_HOME": str(home)}
     target.setdefault("EnvironmentVariables", {}).update({
-        "PD_EPHEMERAL_UI_RUNNER": "true", "PD_EXPECTED_APP_PATH": str(app),
+        "PD_EPHEMERAL_UI_RUNNER": "false" if local_owned else "true",
+        "PD_LOCAL_OWNED_UI_RUNNER": str(local_owned).lower(), "PD_EXPECTED_APP_PATH": str(app),
+        "PD_EXPECTED_APP_BUNDLE_IDENTIFIER": info["CFBundleIdentifier"],
         "PD_PRIVATE_HOME": str(home), "PD_UI_OUTPUT": str(out),
         "PD_UI_WIDTHS": ",".join(map(str, widths)),
         "PD_EXPECT_NAVIGATION_OVERFLOW": str(expect_overflow).lower(),
@@ -158,6 +168,37 @@ def stop_owned_app(cli, app, out):
         mcp(cli, out, "stop", "stop", {"processId": matches[0]})
 
 
+def validate_local_output(output, root=ROOT):
+    artifacts = root / "artifacts"
+    resolved = output.resolve()
+    if artifacts.is_symlink() or resolved == artifacts or not resolved.is_relative_to(artifacts):
+        raise ValueError("Local qualification output must stay inside this checkout's artifacts")
+    return resolved
+
+
+def export_local_evidence(out):
+    destination = out / "attachments"
+    run("xcrun", "xcresulttool", "export", "attachments", "--path", str(out / "PublishedUI.xcresult"),
+        "--output-path", str(destination))
+    for test in json.loads((destination / "manifest.json").read_text()):
+        seen = set()
+        for attachment in sorted(test["attachments"], key=lambda row: row.get("timestamp", 0), reverse=True):
+            name = re.sub(r"_\d+_[0-9A-Fa-f-]{36}(?=\.[^.]+$)", "",
+                          attachment["suggestedHumanReadableName"])
+            source = (destination / attachment["exportedFileName"]).resolve()
+            if (Path(name).name != name or source.parent != destination.resolve()
+                    or not (name in {"ui-observations.json", "final.png", "final-ax.txt"}
+                            or name.startswith(("980-", "1180-", "1440-")))):
+                continue
+            if name in seen:
+                continue
+            seen.add(name)
+            target = out / name
+            if target.exists():
+                raise RuntimeError("Ambiguous local test evidence attachment")
+            shutil.copyfile(source, target)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-only", action="store_true")
@@ -165,6 +206,8 @@ def main():
     parser.add_argument("--tool-cli", type=Path)
     parser.add_argument("--candidate", action="store_true",
                         help="Build and qualify an ad-hoc signed source candidate; never publish it")
+    parser.add_argument("--local-owned-candidate", action="store_true",
+                        help="Qualify only a private source candidate on this Mac without changing display modes")
     parser.add_argument("--expect-navigation-overflow", action="store_true",
                         help="Require the known published-build navigation failure as a negative control")
     parser.add_argument("--window-width", type=int, choices=[980, 1180, 1440],
@@ -176,10 +219,18 @@ def main():
         parser.error("The negative control requires the unchanged published app")
     if os.uname().sysname != "Darwin":
         raise RuntimeError("Requires macOS")
-    if not args.build_only and os.environ.get("GITHUB_ACTIONS") != "true":
-        raise RuntimeError("GUI execution is restricted to an ephemeral GitHub Mac")
     out = args.output.resolve()
-    out.mkdir(parents=True, exist_ok=False)
+    if args.local_owned_candidate and (
+            not args.candidate or args.expect_navigation_overflow or args.build_only):
+        parser.error("Local qualification requires a source candidate and a new output directory inside this checkout's artifacts")
+    if args.local_owned_candidate:
+        try:
+            out = validate_local_output(args.output)
+        except ValueError as error:
+            parser.error(str(error))
+    if not args.build_only and not args.local_owned_candidate and os.environ.get("GITHUB_ACTIONS") != "true":
+        raise RuntimeError("GUI execution is restricted to an ephemeral GitHub Mac")
+    out.mkdir(parents=True, exist_ok=False, mode=0o700)
     widths = ([args.window_width] if args.window_width is not None
               else [980, 1180, 1440] if args.candidate else [980])
     report = {"scope": "Window bounds, all sidebar navigation and selected essential controls",
@@ -189,6 +240,7 @@ def main():
               "source": run("git", "-C", str(ROOT), "rev-parse", "HEAD").strip(),
               "os": run("sw_vers"), "arch": run("uname", "-m").strip(),
               "buildOnly": args.build_only, "result": "incomplete",
+              "localOwnedCandidate": args.local_owned_candidate,
               "dirty": bool(run("git", "-C", str(ROOT), "status", "--porcelain").strip()),
               "inputs": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in [
                   "Tests/PublishedAppUITests/project.yml",
@@ -203,7 +255,7 @@ def main():
     original_mode = None
     cli = args.tool_cli
     try:
-        if not args.build_only:
+        if not args.build_only and not args.local_owned_candidate:
             display = out / "ci-display"
             run("cc", str(ROOT / "scripts/ci-display-qualification.c"),
                 "-framework", "CoreGraphics", "-framework", "CoreFoundation", "-o", str(display))
@@ -223,11 +275,11 @@ def main():
         if report["xcodeBuildMCP"] != "2.7.0":
             raise RuntimeError("Requires qualified XcodeBuildMCP 2.7.0")
         report["xcodegen"] = run("xcodegen", "--version").strip()
-        configuration = build_runner(cli, out)
+        configuration = build_runner(cli, out, args.local_owned_candidate)
         if args.build_only:
             report["result"] = "runner-built-not-executed"
             return
-        app, info = candidate_app(cli, out) if args.candidate else published_app(out)
+        app, info = candidate_app(cli, out, args.local_owned_candidate) if args.candidate else published_app(out)
         run("/System/Library/Frameworks/CoreServices.framework/Frameworks/"
             "LaunchServices.framework/Support/lsregister", "-f", str(app))
         executable = app / "Contents/MacOS/PerformanceDaddy"
@@ -236,13 +288,18 @@ def main():
                                "version": info["CFBundleShortVersionString"], "build": info["CFBundleVersion"],
                                "executableSha256": hashlib.sha256(executable.read_bytes()).hexdigest()}
         home = out / "private-home"
-        home.mkdir()
-        configuration = configure_run(configuration, app, info, home, out, widths, args.expect_navigation_overflow)
-        test_result = mcp(cli, out, "test", "test", {
-            "xctestrunPath": str(configuration),
-            "extraArgs": ["-resultBundlePath", str(out / "PublishedUI.xcresult"),
-                          "-parallel-testing-enabled", "NO"],
-        }, allow_test_failure=args.expect_navigation_overflow)
+        home.mkdir(mode=0o700)
+        configuration = configure_run(configuration, app, info, home, out, widths,
+                                      args.expect_navigation_overflow, args.local_owned_candidate)
+        try:
+            test_result = mcp(cli, out, "test", "test", {
+                "xctestrunPath": str(configuration),
+                "extraArgs": ["-resultBundlePath", str(out / "PublishedUI.xcresult"),
+                              "-parallel-testing-enabled", "NO"],
+            }, allow_test_failure=args.expect_navigation_overflow)
+        finally:
+            if args.local_owned_candidate and (out / "PublishedUI.xcresult").exists():
+                export_local_evidence(out)
         observations = json.loads((out / "ui-observations.json").read_text())
         qualified = [row["page"] for row in observations if row["stage"] == "page-qualified"]
         if not any(row["stage"] == "sampling-paused" for row in observations):
