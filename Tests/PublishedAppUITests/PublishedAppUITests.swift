@@ -51,6 +51,7 @@ final class PublishedAppUITests: XCTestCase {
         app = XCUIApplication(bundleIdentifier: identifier)
         app.launchEnvironment["CFFIXED_USER_HOME"] = home
         app.launch()
+        app.activate()
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 15))
         let running = NSWorkspace.shared.runningApplications.filter { $0.bundleIdentifier == identifier }
         guard running.count == 1,
