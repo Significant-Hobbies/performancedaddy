@@ -205,12 +205,72 @@ public actor WorkloadSampler {
     private let hardwareReader = HardwareEvidenceReader()
     private var counters: [ProcessIdentity: (UInt64, Double)] = [:]
     private var sockets: [ProcessIdentity: ([ListeningPort], Bool)] = [:]
+    private var scopedStarts: [Int32: UInt64] = [:]
+    private var scopedUnavailable = Set<Int32>()
     private var portsDate = Date.distantPast
     public init() {}
 
     public func resetMeasurementWindow() async {
         counters.removeAll()
+        scopedStarts.removeAll()
+        scopedUnavailable.removeAll()
         await systemSampler.resetMeasurementWindow()
+    }
+
+    /// Samples only caller-selected same-user PIDs. It never enumerates the process table
+    /// or inspects ports. A PID that disappears, changes identity, or is inaccessible is
+    /// counted as unavailable for the rest of this measurement window.
+    public func sample(selectedSameUserPIDs pids: [Int32]) async -> LiveSnapshot {
+        let began = ProcessInfo.processInfo.systemUptime
+        let now = Date()
+        let system = await systemSampler.sample(includeProcesses: false)
+        sockets.removeAll()
+        portsDate = .distantPast
+        var processes: [LiveProcess] = []
+        var next: [ProcessIdentity: (UInt64, Double)] = [:]
+        var missing = 0
+        let ownUID = UInt32(getuid())
+        for pid in pids {
+            guard !scopedUnavailable.contains(pid) else { missing += 1; continue }
+            var raw = PDProcess()
+            guard pd_process(pid, &raw) == 1, raw.uid == ownUID, raw.started > 0 else {
+                scopedUnavailable.insert(pid)
+                missing += 1
+                continue
+            }
+            if let expectedStart = scopedStarts[pid], expectedStart != raw.started {
+                scopedUnavailable.insert(pid)
+                missing += 1
+                continue
+            }
+            scopedStarts[pid] = raw.started
+            let identity = ProcessIdentity(pid: pid, started: raw.started)
+            let previous = counters[identity]
+            let cpu: Double? = previous.flatMap {
+                guard raw.cpu >= $0.0, began > $0.1 else { return nil }
+                return Double(raw.cpu - $0.0) / 1_000_000_000 / (began - $0.1) * 100
+            }
+            next[identity] = (raw.cpu, began)
+            let name = Self.string(&raw.name)
+            processes.append(LiveProcess(id: identity, parent: raw.parent, uid: raw.uid,
+                                         name: name.isEmpty ? "Process \(pid)" : name,
+                                         executable: Self.string(&raw.path), directory: Self.string(&raw.cwd),
+                                         cpu: cpu, memory: raw.memory,
+                                         hasControllingTerminal: raw.has_terminal != 0, isSuspended: raw.is_suspended != 0,
+                                         footprint: raw.resource_available != 0 ? raw.footprint : nil,
+                                         diskReadBytes: raw.resource_available != 0 ? raw.read_bytes : nil,
+                                         diskWrittenBytes: raw.resource_available != 0 ? raw.written_bytes : nil))
+        }
+        counters = next
+        var level: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        let result = sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0)
+        let pressure = result != 0 ? "Unavailable" : level == 1 ? "Normal" : level == 2 ? "Warning" : level == 4 ? "Critical" : "Unknown"
+        let hardware = hardwareReader.read()
+        return LiveSnapshot(date: now, processes: processes, system: system, pressure: pressure,
+                            compressed: system.memory?.compressedBytes, unavailableProcesses: missing,
+                            portsDate: portsDate, scanSeconds: ProcessInfo.processInfo.systemUptime - began,
+                            hardware: hardware)
     }
 
     public func sample(includePorts: Bool = true) async -> LiveSnapshot {

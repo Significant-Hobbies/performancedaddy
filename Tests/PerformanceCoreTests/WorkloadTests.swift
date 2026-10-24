@@ -5,6 +5,22 @@ import PerformanceCore
 import XCTest
 
 final class WorkloadTests: XCTestCase {
+    func testScopedSamplerReturnsOnlySelectedSameUserPIDWithoutPorts() async {
+        let sampler = WorkloadSampler()
+        let snapshot = await sampler.sample(selectedSameUserPIDs: [getpid()])
+        XCTAssertEqual(snapshot.processes.map(\.id.pid), [getpid()])
+        XCTAssertEqual(snapshot.unavailableProcesses, 0)
+        XCTAssertTrue(snapshot.processes.allSatisfy { $0.uid == UInt32(getuid()) && $0.ports.isEmpty })
+        XCTAssertGreaterThan(snapshot.processes.first?.id.started ?? 0, 0)
+    }
+
+    func testScopedSamplerMarksMissingPIDUnknownInsteadOfEmptyCoverage() async {
+        let sampler = WorkloadSampler()
+        let snapshot = await sampler.sample(selectedSameUserPIDs: [Int32.max])
+        XCTAssertTrue(snapshot.processes.isEmpty)
+        XCTAssertEqual(snapshot.unavailableProcesses, 1)
+    }
+
     func testNativeSelfResourceCountersAreAvailableAndMonotonic() {
         var first = PDProcess()
         var second = PDProcess()

@@ -4,8 +4,13 @@ import SwiftUI
 enum PerformanceDaddyMain {
     @MainActor
     static func main() {
-        if CommandLine.arguments.dropFirst().first == "--capture-diagnostic" {
-            PerformanceDiagnosticCommand.run(arguments: Array(CommandLine.arguments.dropFirst()))
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.first == "--capture-diagnostic" {
+            PerformanceDiagnosticCommand.run(arguments: arguments)
+        }
+        if DiagnosticCaptureOptions.hasPIDOption(arguments) {
+            FileHandle.standardError.write(Data("--pid is supported only with --capture-diagnostic.\n".utf8))
+            exit(2)
         }
         if CommandLine.arguments.contains("--check-ui-resources") {
             guard PerformanceUIResources.loaded else {
