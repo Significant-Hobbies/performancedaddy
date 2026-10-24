@@ -21,7 +21,11 @@ public struct RootCauseAnalysis: Equatable, Sendable {
         if signals.contains("pressure") { return "macOS memory pressure needs investigation." }
         if signals.contains("app_response") { return "App service response needs investigation." }
         if signals.contains("gpu") { return "GPU activity needs investigation." }
-        if signals.contains("cpu") { return "CPU work is the strongest recorded signal." }
+        if signals.contains("cpu") {
+            return hasSelectedPIDScope
+                ? "System-wide CPU activity is the strongest recorded signal; it is not attributed to the selected task process."
+                : "CPU work is the strongest recorded signal."
+        }
         if signals.contains("memory") { return "Low memory headroom needs a closer check." }
         if signals.contains("disk") { return "Low disk capacity needs review." }
         if signals.contains("paging") { return "Swap-out activity needs a closer check." }
@@ -31,6 +35,7 @@ public struct RootCauseAnalysis: Equatable, Sendable {
     public let assessments: [CauseAssessment]
     public let contributors: [String]
     public let coverage: String
+    public let hasSelectedPIDScope: Bool
     public let nextCheck: String
     public let limitations: String
 
@@ -196,6 +201,7 @@ public struct RootCauseAnalysis: Equatable, Sendable {
         } ?? ""
         return Self(conclusion: conclusion, assessments: assessments, contributors: contributors,
                     coverage: "\(count) distinct in-window samples; \(capture.samples.count - count) invalid, duplicate or out-of-window samples excluded. Peak recorded observer CPU (PerformanceDaddy itself): \(observer.map(number) ?? "unavailable") cores.\(processScope)",
+                    hasSelectedPIDScope: capture.processScope?.coverage == .selectedSameUserPIDs,
                     nextCheck: next,
                     limitations: (incidents.isEmpty ? "No causal intervention was performed. Legacy attribution contains at most 16 CPU-ranked process rows per observation, grouped by name. GPU/fans, response latency, Network latency and disk latency are unavailable in this capture. Missing rows are not proven idle; recorded contributor averages are lower bounds." : "No causal intervention or task-response timing was measured. Up to 32 workload families are retained across CPU, footprint and I/O ranking; resource sums and contributor averages are lower bounds of readable evidence. Project and app associations come from working-directory, executable and parent metadata, not verified ownership. Driver GPU/SMC readings are version-dependent. Polling can miss short-lived activity. Network latency, UI hangs and disk latency need targeted evidence. Non-observation describes this window only.") + processScope)
     }

@@ -69,6 +69,33 @@ final class RootCauseAnalysisTests: XCTestCase {
         XCTAssertTrue(result.nextCheck.contains("inspection may be restricted"))
     }
 
+    func testSelectedPIDScopeQualifiesSystemWideCPUHeadline() {
+        let date = Date(timeIntervalSince1970: 0)
+        let scope = DiagnosticProcessScope(
+            coverage: .selectedSameUserPIDs,
+            selectedPIDCount: 1,
+            readableProcessSamples: 2,
+            unavailableProcessSamples: 0,
+            statement: "Other processes are unobserved.")
+        let samples = (0..<2).map { index in
+            SystemSample(timestamp: date.addingTimeInterval(Double(index)), usedCPUCores: 2,
+                         memoryHeadroomRatio: 0.5, swapUsedBytes: 0, diskFreeBytes: nil,
+                         thermal: .nominal, processes: [
+                            .init(id: 42, parentID: 1, name: "task_worker", cpuCores: 0.001, residentBytes: 100),
+                         ])
+        }
+        let selectedCapture = DiagnosticCapture(startedAt: date, endedAt: date.addingTimeInterval(1),
+                                                samples: samples, processScope: scope)
+        let selectedResult = RootCauseAnalysis.analyze(selectedCapture)
+        XCTAssertEqual(selectedResult.headline,
+                       "System-wide CPU activity is the strongest recorded signal; it is not attributed to the selected task process.")
+        XCTAssertTrue(selectedResult.hasSelectedPIDScope)
+
+        let legacyResult = RootCauseAnalysis.analyze(capture(samples))
+        XCTAssertEqual(legacyResult.headline, "CPU work is the strongest recorded signal.")
+        XCTAssertFalse(legacyResult.hasSelectedPIDScope)
+    }
+
     private func capture(_ samples: [SystemSample]) -> DiagnosticCapture {
         .init(startedAt: Date(timeIntervalSince1970: 0), endedAt: Date(timeIntervalSince1970: 10), samples: samples)
     }
