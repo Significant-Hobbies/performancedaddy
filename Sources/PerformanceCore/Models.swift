@@ -83,17 +83,42 @@ public struct DiagnosticCapture: Codable, Equatable, Sendable {
     public let isFixture: Bool
     public let marker: IncidentMarker?
     public let followUp: FollowUpEvidence?
+    /// Present on native one-shot CLI captures. Older saved captures omit this field.
+    public let processScope: DiagnosticProcessScope?
 
-    public init(startedAt: Date, endedAt: Date, samples: [SystemSample], isFixture: Bool = false, marker: IncidentMarker? = nil, followUp: FollowUpEvidence? = nil) {
+    public init(startedAt: Date, endedAt: Date, samples: [SystemSample], isFixture: Bool = false, marker: IncidentMarker? = nil, followUp: FollowUpEvidence? = nil, processScope: DiagnosticProcessScope? = nil) {
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.samples = samples
         self.isFixture = isFixture
         self.marker = marker
         self.followUp = followUp
+        self.processScope = processScope
     }
 
     public var duration: TimeInterval { max(0, endedAt.timeIntervalSince(startedAt)) }
+}
+
+public struct DiagnosticProcessScope: Codable, Equatable, Sendable {
+    public enum Coverage: String, Codable, Equatable, Sendable {
+        case systemProcessEnumeration
+        case selectedSameUserPIDs
+    }
+
+    public let coverage: Coverage
+    public let selectedPIDCount: Int?
+    public let readableProcessSamples: Int
+    public let unavailableProcessSamples: Int
+    public let statement: String
+
+    public init(coverage: Coverage, selectedPIDCount: Int?, readableProcessSamples: Int,
+                unavailableProcessSamples: Int, statement: String) {
+        self.coverage = coverage
+        self.selectedPIDCount = selectedPIDCount
+        self.readableProcessSamples = readableProcessSamples
+        self.unavailableProcessSamples = unavailableProcessSamples
+        self.statement = statement
+    }
 }
 
 public enum FindingConfidence: String, Equatable, Sendable {
