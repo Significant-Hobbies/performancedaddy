@@ -4,6 +4,26 @@ import XCTest
 
 @MainActor
 final class MonitoringSurfaceTests: XCTestCase {
+    func testClosedRetainedWindowCanReportOpenAgain() async {
+        let model = LiveViewModel()
+        var openings: [Bool] = []
+        let window = FixtureWindow(contentRect: NSRect(x: 0, y: 0, width: 20, height: 20), styleMask: .borderless, backing: .buffered, defer: false)
+        let view = MonitoringSurface.SurfaceView(model: model, onWindowOpen: { openings.append($0) })
+        window.contentView = view
+        await Task.yield()
+        window.open = false
+        NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: window)
+        await Task.yield()
+        XCTAssertFalse(model.hasVisibleSurface)
+        XCTAssertEqual(openings.last, false)
+        window.open = true
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        await Task.yield()
+        XCTAssertTrue(model.hasVisibleSurface)
+        XCTAssertEqual(openings.last, true)
+        window.contentView = nil
+    }
+
     func testHiddenHealthyMonitoringBacksOffAndVisibleMonitoringStaysResponsive() {
         let model = LiveViewModel()
         XCTAssertEqual(model.automaticRefreshInterval, 30)
@@ -46,9 +66,10 @@ final class MonitoringSurfaceTests: XCTestCase {
     }
 
     private final class FixtureWindow: NSWindow {
+        var open = true
         var minimized = false
         var unoccluded = true
-        override var isVisible: Bool { true }
+        override var isVisible: Bool { open }
         override var isMiniaturized: Bool { minimized }
         override var occlusionState: NSWindow.OcclusionState { unoccluded ? [.visible] : [] }
     }

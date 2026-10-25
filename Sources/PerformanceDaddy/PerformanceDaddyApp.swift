@@ -39,9 +39,7 @@ struct PerformanceDaddyApp: App {
     @StateObject private var login = DaddyLaunchAtLogin()
     var body: some Scene {
         Window("PerformanceDaddy", id: "main") {
-            DashboardView(model: diagnosis, live: live)
-                .frame(minWidth: 980, minHeight: 800)
-                .background(MonitoringSurface(model: live))
+            DashboardWindowContent(diagnosis: diagnosis, live: live)
                 .task { if !PerformanceStartupCheck.enabled { updates.start(live: live, diagnosis: diagnosis) } }
                 .onAppear {
                     reviewActiveWorkBeforeQuit()

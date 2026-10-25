@@ -9,9 +9,12 @@ struct DashboardView: View {
     @State private var showingDeleteRecentRuns = false
     @State private var showingDeleteBaseline = false
     @State private var showingReplaceBaseline = false
+    private var onDestinationChanged: ((String) -> Void)?
 
-    init(model: DiagnosisViewModel, live: LiveViewModel, initialDestination: String = "Processes") {
+    init(model: DiagnosisViewModel, live: LiveViewModel, initialDestination: String = "Processes",
+         onDestinationChanged: ((String) -> Void)? = nil) {
         self.model = model; self.live = live
+        self.onDestinationChanged = onDestinationChanged
         _destination = State(initialValue: initialDestination)
     }
 
@@ -100,7 +103,10 @@ struct DashboardView: View {
         .alert("Profile needs attention", isPresented: Binding(get: { model.profileImportError != nil }, set: { if !$0 { model.profileImportError = nil } })) {
             Button("OK") { model.profileImportError = nil }
         } message: { Text(model.profileImportError ?? "") }
-        .onChange(of: destination, initial: true) { _, next in live.inspectPorts = next == "Ports" }
+        .onChange(of: destination, initial: true) { _, next in
+            live.inspectPorts = next == "Ports"
+            onDestinationChanged?(next)
+        }
         .onChange(of: live.requestedDestination, initial: true) { _, requested in
             if let requested { destination = requested; live.requestedDestination = nil }
         }

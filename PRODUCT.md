@@ -154,6 +154,8 @@ Healthy hidden sampling waits 30 seconds between captures; pending signals use
 10 seconds and visible diagnostics retain adaptive 5–15 second waits. Sampling
 remains shared, and the main-queue response heartbeat stops while hidden except
 during an explicit recording. Existing agent-presence compatibility is retained.
+Closing the main window releases its subscribed dashboard content while keeping
+the diagnostic model and selected destination available for reopening.
 A notification's Quit action runs only when
 the owner presses it on a recent alert: apps receive a normal quit request,
 other workloads receive SIGTERM to the exact identities captured at alert time,
