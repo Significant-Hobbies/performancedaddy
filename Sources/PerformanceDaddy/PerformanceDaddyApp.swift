@@ -5,6 +5,10 @@ enum PerformanceDaddyMain {
     @MainActor
     static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.first == "--agent-hook" {
+            AgentHookCommand.run()
+            return
+        }
         if arguments.first == "--capture-diagnostic" {
             PerformanceDiagnosticCommand.run(arguments: arguments)
         }
@@ -25,12 +29,6 @@ enum PerformanceDaddyMain {
 }
 
 struct PerformanceDaddyApp: App {
-    init() {
-        if CommandLine.arguments.dropFirst().first == "--agent-hook" {
-            AgentHookCommand.run()
-            exit(0)
-        }
-    }
     @NSApplicationDelegateAdaptor(PerformanceDaddyDelegate.self) private var delegate
     // Surfaces observe these services. The scene only owns their lifetime.
     @State private var live = LiveViewModel()
