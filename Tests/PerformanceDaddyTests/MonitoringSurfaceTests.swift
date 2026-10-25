@@ -75,6 +75,26 @@ final class MonitoringSurfaceTests: XCTestCase {
         XCTAssertFalse(model.hasVisibleSurface)
     }
 
+    func testOrderingOutPreservesDashboardUntilTheWindowActuallyCloses() async {
+        let model = LiveViewModel()
+        var openings: [Bool] = []
+        let window = FixtureWindow(contentRect: NSRect(x: 0, y: 0, width: 20, height: 20), styleMask: .borderless, backing: .buffered, defer: false)
+        let view = MonitoringSurface.SurfaceView(model: model, onWindowOpen: { openings.append($0) })
+        window.contentView = view
+        await Task.yield()
+        XCTAssertEqual(openings.last, true)
+        window.open = false
+        window.unoccluded = false
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        await Task.yield()
+        XCTAssertFalse(model.hasVisibleSurface)
+        XCTAssertEqual(openings.last, true)
+        NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: window)
+        await Task.yield()
+        XCTAssertEqual(openings.last, false)
+        window.contentView = nil
+    }
+
     private final class FixtureWindow: NSWindow {
         var open = true
         var minimized = false

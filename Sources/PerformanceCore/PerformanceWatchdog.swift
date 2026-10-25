@@ -65,8 +65,6 @@ public struct PerformanceWatchdog: Sendable {
         let contributors = LoadContributors.group(snapshot.processes)
         load.policy = loadPolicy
         var alerts = load.observeAll(snapshot, coreCount: coreCount, ignored: ignored, contributors: contributors)
-        needsCloserLook = snapshot.pressure == "Warning" || snapshot.pressure == "Critical"
-            || (snapshot.system.usedCPUCores ?? 0) >= loadPolicy.cpuFraction * Double(coreCount)
         var seen: Set<Key> = []
 
         func alert(_ kind: LoadAlert.Kind, _ window: Window, _ contributor: LoadContributor?, _ detail: String) -> LoadAlert {
@@ -102,7 +100,6 @@ public struct PerformanceWatchdog: Sendable {
                     over = true; seconds = policy.growthSeconds
                 }
                 guard over else { windows.removeValue(forKey: key); continue }
-                if kind != .memoryGrowth { needsCloserLook = true }
                 var window = windows[key] ?? Window(since: now, last: now, samples: 0,
                                                     initialBytes: contributor.memoryBytes, lastBytes: contributor.memoryBytes)
                 // Drops and changing helper coverage start a new growth window.
@@ -161,7 +158,6 @@ public struct PerformanceWatchdog: Sendable {
             } ?? []
             let over = kind == .thermal ? hot : !fastFans.isEmpty
             guard over else { windows.removeValue(forKey: key); continue }
-            needsCloserLook = true
             var window = windows[key] ?? Window(since: now, last: now, samples: 0, initialBytes: 0, lastBytes: 0)
             window.last = now; window.samples += 1; windows[key] = window
             let seconds = kind == .thermal ? policy.thermalSeconds : policy.fanSeconds
@@ -179,6 +175,9 @@ public struct PerformanceWatchdog: Sendable {
             windows.removeValue(forKey: key)
         }
         windows = windows.filter { seen.contains($0.key) }
+        needsCloserLook = load.needsCloserLook(at: now) || windows.keys.contains {
+            $0.kind != .memoryGrowth && cooldowns[$0] == nil
+        }
         if cooldowns.count > 1_024 {
             cooldowns = Dictionary(uniqueKeysWithValues: cooldowns.sorted { $0.value > $1.value }.prefix(1_024).map { ($0.key, $0.value) })
         }

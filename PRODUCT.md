@@ -150,8 +150,12 @@ evidence windows always follow exact process identities. Local notifications
 deduplicate simultaneous findings for the same workload or heat episode, and
 the last 50 summaries remain in memory for the session. Snooze resets pending
 evidence. Missing sensors and gaps cannot establish sustained load or a leak.
+Enabling alerts includes the new workload and heat rules, including upgrades
+that already enabled alerts. Default workload CPU is 80% of one core for three
+minutes. Resident-memory limits remain off until enabled or set per workload.
 Healthy hidden sampling waits 30 seconds between captures; pending signals use
-10 seconds and visible diagnostics retain adaptive 5–15 second waits. Sampling
+10 seconds unless their alerts are cooling down. Visible diagnostics retain
+adaptive 5–15 second waits. Sampling
 remains shared, and the main-queue response heartbeat stops while hidden except
 during an explicit recording. Existing agent-presence compatibility is retained.
 Closing the main window releases its subscribed dashboard content while keeping

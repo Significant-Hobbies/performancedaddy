@@ -110,6 +110,14 @@ public struct SustainedLoadTracker: Sendable {
 
     public mutating func reset() { cpuRun.removeAll(); memoryRun.removeAll() }
 
+    func needsCloserLook(at date: Date) -> Bool {
+        for (kind, pending) in [(LoadAlert.Kind.cpu, !cpuRun.isEmpty), (.memory, !memoryRun.isEmpty)] where pending {
+            guard let last = lastAlerts[kind] else { return true }
+            if date < last || date.timeIntervalSince(last) >= policy.cooldown { return true }
+        }
+        return false
+    }
+
     public mutating func observe(_ snapshot: LiveSnapshot, coreCount: Int,
                                  ignored: Set<String> = [], contributors grouped: [LoadContributor]? = nil) -> LoadAlert? {
         observeAll(snapshot, coreCount: coreCount, ignored: ignored, contributors: grouped).first

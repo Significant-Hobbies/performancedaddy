@@ -32,11 +32,12 @@ struct PerformanceDaddyApp: App {
         }
     }
     @NSApplicationDelegateAdaptor(PerformanceDaddyDelegate.self) private var delegate
-    @StateObject private var live = LiveViewModel()
-    @StateObject private var diagnosis = DiagnosisViewModel()
-    @StateObject private var updates = AppUpdates()
-    @StateObject private var alerts = LoadAlertCenter()
-    @StateObject private var login = DaddyLaunchAtLogin()
+    // Surfaces observe these services. The scene only owns their lifetime.
+    @State private var live = LiveViewModel()
+    @State private var diagnosis = DiagnosisViewModel()
+    @State private var updates = AppUpdates()
+    @State private var alerts = LoadAlertCenter()
+    @State private var login = DaddyLaunchAtLogin()
     var body: some Scene {
         Window("PerformanceDaddy", id: "main") {
             DashboardWindowContent(diagnosis: diagnosis, live: live)

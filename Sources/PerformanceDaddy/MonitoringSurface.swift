@@ -52,9 +52,9 @@ struct MonitoringSurface: NSViewRepresentable {
         private func reportVisibility() {
             let visible = window.map { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) } ?? false
             if tracksSampling { model?.setSurfaceVisible(id, visible: visible) }
-            // Occlusion should slow sampling, but only closing the actual
-            // window releases the dashboard. Preserve state while minimized.
-            if window?.isMiniaturized != true { reportOpen(window?.isVisible == true) }
+            // Ordering out or hiding slows sampling without discarding view
+            // state. Only willClose marks an already-open window closed.
+            if lastOpen == nil || window?.isVisible == true { reportOpen(window?.isVisible == true) }
         }
 
         private func reportOpen(_ open: Bool) {

@@ -137,6 +137,45 @@ final class PerformanceWatchdogTests: XCTestCase {
         XCTAssertTrue(detector.observe(snapshot(180, cpu: 120), coreCount: 16).isEmpty)
     }
 
+    func testCooldownReleasesFasterSamplingForEverySustainedRule() {
+        for kind in [LoadAlert.Kind.processCPU, .largeMemory, .thermal, .fans, .cpu, .memory] {
+            var detector = watchdog([kind])
+            detector.policy.processSeconds = 60
+            detector.policy.fanSeconds = 60
+            detector.policy.memoryGB = 1
+            detector.loadPolicy.cpuSeconds = 60
+            func reading(_ second: Int) -> LiveSnapshot {
+                snapshot(second, cpu: kind == .processCPU ? 120 : 0,
+                         memory: kind == .largeMemory ? 2 << 30 : 0,
+                         used: kind == .cpu ? 15 : 2, pressure: kind == .memory ? "Warning" : "Normal",
+                         thermal: kind == .thermal ? .serious : .nominal,
+                         rpm: kind == .fans ? 5_000 : nil, maximum: 5_500)
+            }
+            for second in [0, 30] {
+                XCTAssertTrue(detector.observe(reading(second), coreCount: 16).isEmpty)
+                XCTAssertTrue(detector.needsCloserLook, kind.rawValue)
+            }
+            XCTAssertEqual(detector.observe(reading(60), coreCount: 16).map(\.kind), [kind])
+            XCTAssertFalse(detector.needsCloserLook, kind.rawValue)
+            for second in stride(from: 90, to: 960, by: 30) {
+                XCTAssertTrue(detector.observe(reading(second), coreCount: 16).isEmpty)
+                XCTAssertFalse(detector.needsCloserLook, kind.rawValue)
+            }
+            XCTAssertEqual(detector.observe(reading(960), coreCount: 16).map(\.kind), [kind])
+        }
+    }
+
+    func testDifferentPendingRuleKeepsFasterSamplingDuringFanCooldown() {
+        var detector = watchdog([.fans, .processCPU])
+        detector.policy.fanSeconds = 60
+        for second in [0, 30, 60] {
+            _ = detector.observe(snapshot(second, cpu: 0, rpm: 5_000, maximum: 5_500), coreCount: 16)
+        }
+        XCTAssertFalse(detector.needsCloserLook)
+        _ = detector.observe(snapshot(90, cpu: 120, rpm: 5_000, maximum: 5_500), coreCount: 16)
+        XCTAssertTrue(detector.needsCloserLook)
+    }
+
     func testRuleEvaluationWithThousandProcessesHasBoundedCost() {
         let processes = (0..<1_000).map { offset in
             LiveProcess(id: .init(pid: Int32(offset + 100), started: 1), parent: 1, uid: getuid(), name: "worker\(offset)",
