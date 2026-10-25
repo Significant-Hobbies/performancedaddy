@@ -62,9 +62,46 @@ final class LoadAlertCenterTests: XCTestCase {
         XCTAssertEqual(first.policy, LoadAlertPolicy(cooldown: 900))
         first.cpuPercent = 90
         first.cooldownMinutes = 30
+        first.watchdogPolicy.processCPUPercent = 250
+        first.watchdogPolicy.limits["app:example"] = .init(name: "Example", cpuPercent: 300, memoryGB: 8)
         let second = LoadAlertCenter(defaults: defaults)
         XCTAssertEqual(second.policy.cpuFraction, 0.9, accuracy: 0.0001)
         XCTAssertEqual(second.policy.cooldown, 1_800)
+        XCTAssertEqual(second.watchdogPolicy.processCPUPercent, 250)
+        XCTAssertEqual(second.watchdogPolicy.limits["app:example"]?.memoryGB, 8)
+    }
+
+    func testRecentFindingsWorkWithoutNotificationPermissionAndRespectSnooze() throws {
+        let suite = "LoadAlertCenterTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "loadAlerts.enabled")
+        let alerts = LoadAlertCenter(defaults: defaults)
+        var policy = WatchdogPolicy()
+        policy.kinds = [.processCPU]; policy.processSeconds = 60
+        alerts.watchdogPolicy = policy
+        let now = Date()
+        func sample(_ offset: TimeInterval) -> LiveSnapshot {
+            let date = now.addingTimeInterval(offset)
+            let process = LiveProcess(id: .init(pid: 500, started: 1), parent: 1, uid: getuid(), name: "Example",
+                executable: "/Applications/Example.app/Contents/MacOS/Example", directory: "/", cpu: 150, memory: 1)
+            return LiveSnapshot(date: date, processes: [process],
+                system: .init(timestamp: date, usedCPUCores: 2, memoryHeadroomRatio: 0.5, swapUsedBytes: 0,
+                              diskFreeBytes: nil, thermal: .nominal, processes: []), pressure: "Normal", compressed: nil,
+                unavailableProcesses: 0, portsDate: date, scanSeconds: 0.01)
+        }
+        for time in [0.0, 30, 60] { alerts.observe(sample(time)) }
+        XCTAssertEqual(alerts.recent.count, 1)
+        XCTAssertEqual(alerts.recent.first?.kind, .processCPU)
+        XCTAssertEqual(alerts.authorization, .notDetermined)
+        alerts.clearRecent()
+        alerts.snooze(minutes: 15)
+        for time in [90.0, 120, 150] { alerts.observe(sample(time)) }
+        XCTAssertTrue(alerts.recent.isEmpty)
+        alerts.resumeAlerts()
+        // Snooze/resume cannot turn pre-snooze observations into fresh evidence.
+        alerts.observe(sample(180))
+        XCTAssertTrue(alerts.recent.isEmpty)
     }
 
     func testAlertTextNamesScopeAndProtection() {

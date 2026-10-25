@@ -73,7 +73,7 @@ struct PerformanceDaddyApp: App {
         }
         .menuBarExtraStyle(.window)
         Settings {
-            LoadAlertSettingsView(alerts: alerts)
+            LoadAlertSettingsView(alerts: alerts, live: live)
         }
     }
 

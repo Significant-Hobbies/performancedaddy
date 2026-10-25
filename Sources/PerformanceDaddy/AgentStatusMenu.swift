@@ -157,7 +157,7 @@ struct AgentStatusMenu: View {
                     Button(model.paused ? "Resume monitoring" : "Pause monitoring") { model.paused.toggle() }
                     Button("Check for Updates…") { updates.check() }
                         .disabled(!updates.canCheck || !updates.isIdle)
-                    SettingsLink { Text("Load Alerts…") }
+                    SettingsLink { Text("Performance Alerts…") }
                     Divider()
                     DaddyLaunchAtLoginToggle(login: login)
                     DaddyCompletionNoticeToggle(title: "Notify When Diagnosis Finishes")

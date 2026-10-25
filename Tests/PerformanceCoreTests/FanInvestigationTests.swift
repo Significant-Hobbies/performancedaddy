@@ -3,6 +3,35 @@ import XCTest
 @testable import PerformanceCore
 
 final class FanInvestigationTests: XCTestCase {
+    func testFanComparisonMeasuresRPMWithoutCPUAttribution() {
+        let text = FanInvestigation.compareFanSpeeds(before: fanCapture(rpm: 5_000), after: fanCapture(rpm: 2_000))
+        XCTAssertTrue(text.contains("Fan 1: average 5000 → 2000 RPM"), text)
+        XCTAssertTrue(text.contains("cause of any change remain unproven"))
+        XCTAssertTrue(FanInvestigation.compareFanSpeeds(before: fanCapture(rpm: 5_000), after: fanCapture(rpm: nil)).contains("unavailable"))
+        XCTAssertTrue(FanInvestigation.compareFanSpeeds(before: fanCapture(rpm: 5_000), after: fanCapture(rpm: 2_000, name: "Fan 2")).contains("unavailable in one recording"))
+    }
+
+    func testFanComparisonRejectsSparseCoverageAndDuplicateSamples() {
+        let before = fanCapture(rpm: 5_000)
+        let single = DiagnosticCapture(startedAt: before.startedAt, endedAt: before.endedAt,
+                                      samples: Array(repeating: before.samples[0], count: 12))
+        XCTAssertTrue(FanInvestigation.compareFanSpeeds(before: before, after: single).contains("unavailable"))
+    }
+
+    private func fanCapture(rpm: Double?, name: String = "Fan 1") -> DiagnosticCapture {
+        let samples = (0..<12).map { index in
+            let hardware = HardwareEvidence(fans: [.init(name: name, rpm: rpm, maximumRPM: 6_000)],
+                cpuSensorMaximumCelsius: nil, gpuSensorMaximumCelsius: nil, cpuSensorCount: 0, gpuSensorCount: 0,
+                gpuUtilizationPercent: nil, source: "Test")
+            let incident = IncidentSampleEvidence(logicalCPUs: 8, pressure: "Normal", foreground: nil,
+                workloads: [], readableProcesses: 0, unavailableProcesses: 0, scanSeconds: 0, hardware: hardware,
+                newlyObservedProcesses: 0, noLongerObservedProcesses: 0)
+            return SystemSample(timestamp: Date(timeIntervalSince1970: Double(index)), usedCPUCores: nil,
+                memoryHeadroomRatio: nil, swapUsedBytes: nil, diskFreeBytes: nil, thermal: .nominal, processes: [], incident: incident)
+        }
+        return capture(samples)
+    }
+
     func testSustainedCPUIdentifiesRecordedContributorWithoutProvingFanCause() {
         let result = FanInvestigation.analyze(capture((0..<12).map { sample($0, cpu: 3) }))
         XCTAssertTrue(result.sustainedCPU)

@@ -28,7 +28,10 @@ struct DashboardView: View {
                 } else if destination == "App access" {
                     AppAccessAuditView(live: live)
                 } else if destination == "Fans & heat" {
-                    FanInvestigationView(model: model, hardware: live.latestEvidence?.incident?.hardware)
+                    FanInvestigationView(model: model, hardware: live.latestEvidence?.incident?.hardware, snapshot: live.snapshot) { workload in
+                        live.selection = [workload.owner.id]
+                        destination = "Processes"
+                    }
                 } else {
                     VStack(spacing: 0) {
                         HStack {
@@ -98,6 +101,9 @@ struct DashboardView: View {
             Button("OK") { model.profileImportError = nil }
         } message: { Text(model.profileImportError ?? "") }
         .onChange(of: destination, initial: true) { _, next in live.inspectPorts = next == "Ports" }
+        .onChange(of: live.requestedDestination, initial: true) { _, requested in
+            if let requested { destination = requested; live.requestedDestination = nil }
+        }
         .performanceTheme(PerformanceTheme.palette)
         .buttonStyle(DaddyButtonStyle())
         .toolbar(.hidden, for: .windowToolbar)

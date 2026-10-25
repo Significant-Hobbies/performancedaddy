@@ -19,7 +19,7 @@ final class LiveViewModelTests: XCTestCase {
     func testIndependentSurfacesPreserveForegroundModeUntilLastOneHides() {
         let model = LiveViewModel()
         let main = UUID(), wall = UUID(), menu = UUID()
-        XCTAssertEqual(model.automaticRefreshInterval, 5)
+        XCTAssertEqual(model.automaticRefreshInterval, 30)
         model.setSurfaceVisible(main, visible: true)
         model.setSurfaceVisible(wall, visible: true)
         model.setSurfaceVisible(menu, visible: true)
@@ -29,7 +29,7 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(model.automaticRefreshInterval, 5)
         model.setSurfaceVisible(menu, visible: false)
         XCTAssertFalse(model.hasVisibleSurface)
-        XCTAssertEqual(model.automaticRefreshInterval, 5)
+        XCTAssertEqual(model.automaticRefreshInterval, 30)
         model.setSurfaceVisible(wall, visible: true)
         XCTAssertEqual(model.automaticRefreshInterval, 5)
     }

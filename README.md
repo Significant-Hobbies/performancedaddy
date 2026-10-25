@@ -14,6 +14,7 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
 - **Record follow-up:** name the same action to repeat and the change you made yourself, then record a matching post-marker window. Report whether it felt better afterwards. The result keeps user-reported symptoms, resource changes and app-service timing separate; mixed app/version, power mode, missing or sparse probes, censored replies and differing windows prevent a latency improvement claim. The linked baseline and declared change survive reopening the report and recent-run rotation. No process or setting is changed by this workflow.
 - **Richer diagnosis:** recordings use the same native census as the live view and retain macOS memory pressure, workload footprint, identity-safe disk-I/O rates, project basenames, process-arrival observations and observer overhead. CPU, memory and I/O leaders remain visible separately. Polling is not a complete execution-event log; I/O throughput is not disk latency.
 - **Measured fans and GPU:** read-only SMC/IORegistry adapters expose available fan RPM/reported maxima, observed CPU/GPU sensor maxima and device GPU utilization. These undocumented driver fields vary by hardware/macOS; absent values remain unavailable. No fan control, helper, shell monitoring command or external runtime dependency is added.
+- **Always-on performance alerts:** enable Performance Alerts from Settings or the menu bar. Shared captures evaluate whole-Mac CPU and memory pressure, sustained workload CPU, optional resident-memory limits, substantial memory growth, thermal pressure and measured fan speed. Set per-workload limits, mute apps/executables/agent providers, snooze alerts, or inspect the last 50 session-only summaries. Fan alerts open Fans & heat; they never imply a proven heating app or control the fans. Matching fan RPM can be compared across equally long, adequately covered recordings.
 - **Import stacks / export trace:** Diagnose imports saved Activity Monitor Sample Process text and sampled speedscope JSON locally, with bounded parsing. Event-loop idle waits are distinguished from synchronization/I/O wait evidence; stacks do not prove a hang or measure CPU/response latency. Explicit trace export saves Chrome trace-event JSON for tools such as Perfetto; it is not a scheduler trace. Other formats require conversion and are rejected explicitly.
 
 
@@ -166,8 +167,12 @@ incident-diagnosis workspace. It runs locally without dependencies or accounts.
 - **Monitor overhead:** the footer exposes this app's CPU, resident RAM and latest
   collection duration. These are measurements, not a certified overhead budget.
 
-Snapshots refresh about every ten seconds and back off to at most fifteen
-seconds when collection takes longer. Socket inventories refresh about every
+Visible snapshots wait five seconds between captures and back off to fifteen
+seconds when collection takes longer. Hidden healthy monitoring waits thirty
+seconds, shortening to ten while enabled alert rules detect an elevated signal.
+The main-queue responsiveness heartbeat and opt-in app response probe stop while
+hidden, except during an explicit recording. Agent-presence compatibility checks
+remain every two seconds. Socket inventories refresh about every
 thirty seconds at the default cadence. Initial and manual refreshes remain
 immediate. Pause freezes the display. Collection reads process metadata, not
 prompts, transcripts, environment variables or command arguments.

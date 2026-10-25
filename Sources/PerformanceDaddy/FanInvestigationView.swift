@@ -5,6 +5,8 @@ import SaaSMakerUI
 struct FanInvestigationView: View {
     @ObservedObject var model: DiagnosisViewModel
     var hardware: HardwareEvidence? = nil
+    var snapshot: LiveSnapshot? = nil
+    var onInspect: ((LoadContributor) -> Void)? = nil
 
     var body: some View {
         ScrollView {
@@ -45,6 +47,29 @@ struct FanInvestigationView: View {
             Text("Record while the fan is loud. We’ll look for sustained CPU work, app and agent contributors, thermal pressure and macOS power constraints.")
                 .foregroundStyle(PerformanceTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
             if let hardware { HardwareEvidenceView(hardware: hardware) }
+            if let snapshot {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("What is happening now").font(.headline)
+                    Text("\(snapshot.date.formatted(date: .omitted, time: .standard)) · Thermal state: \(snapshot.system.thermal.rawValue) · Memory pressure: \(snapshot.pressure)")
+                        .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
+                    ForEach(Array(LoadContributors.group(snapshot.processes).filter { $0.cpuCores >= 0.1 && $0.owner.name != "kernel_task" }
+                        .sorted { $0.cpuCores > $1.cpuCores }.prefix(5).enumerated()), id: \.offset) { _, workload in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(workload.kind == .app ? "\(workload.name) and helpers" : workload.name).lineLimit(2)
+                                Text("PID \(workload.owner.id.pid)" + (workload.kind == .agent && !workload.owner.directory.isEmpty && workload.owner.directory != "/" ? " · \(URL(fileURLWithPath: workload.owner.directory).lastPathComponent)" : ""))
+                                    .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                            }
+                            Spacer(minLength: 12)
+                            Text(String(format: "%.1f cores", workload.cpuCores)).monospacedDigit()
+                            if let onInspect { Button("inspect") { onInspect(workload) } }
+                        }
+                    }
+                    Text("These are current CPU consumers, not proven fan causes. GPU work, earlier heat and ambient temperature can also matter. kernel_task can be responding to heat. Fan-control ownership and actual clock throttling are not measured.")
+                        .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             coverage
             Picker("Recording length", selection: $model.selectedLength) {
                 ForEach(DiagnosisViewModel.CaptureLength.allCases) { length in
@@ -135,7 +160,8 @@ struct FanInvestigationView: View {
                     Text(comparison.title).font(.headline)
                     Text(comparison.detail).font(.callout)
                     Text(FanInvestigation.compareWorkload(before: baseline.capture, after: report.capture)).font(.callout)
-                    Text("This comparison covers recorded CPU, memory and thermal evidence. Fan noise and task responsiveness remain user-reported; compare available RPM readings separately.")
+                    Text(FanInvestigation.compareFanSpeeds(before: baseline.capture, after: report.capture)).font(.callout)
+                    Text("This comparison covers recorded resource, thermal and available fan RPM evidence. Fan noise and task responsiveness remain user-reported.")
                         .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
                 }
             }

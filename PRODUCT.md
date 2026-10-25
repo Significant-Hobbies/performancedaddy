@@ -142,13 +142,27 @@ review. StorageDaddy may ask PerformanceDaddy to verify whether removing or
 disabling a reviewed item changed runtime behavior. Neither product silently
 optimizes the Mac.
 
-Opt-in sustained-load alerts are the one runtime notification. When CPU or
-memory pressure stays above the owner's threshold, a local notification names
-the workload that consistently led, if one did. Its Quit action runs only when
+Opt-in performance alerts cover sustained whole-Mac CPU and memory pressure,
+individual app/agent/process CPU, resident-memory limits, substantial memory
+growth, serious/critical thermal pressure and high measured fan RPM. Workload
+limits and mutes follow apps, executables or agent providers across launches;
+evidence windows always follow exact process identities. Local notifications
+deduplicate simultaneous findings for the same workload or heat episode, and
+the last 50 summaries remain in memory for the session. Snooze resets pending
+evidence. Missing sensors and gaps cannot establish sustained load or a leak.
+Healthy hidden sampling waits 30 seconds between captures; pending signals use
+10 seconds and visible diagnostics retain adaptive 5–15 second waits. Sampling
+remains shared, and the main-queue response heartbeat stops while hidden except
+during an explicit recording. Existing agent-presence compatibility is retained.
+A notification's Quit action runs only when
 the owner presses it on a recent alert: apps receive a normal quit request,
 other workloads receive SIGTERM to the exact identities captured at alert time,
 and nothing is force-stopped from a notification. One later sample is reported
-as an observation, not as proof that the quit helped.
+as an observation, not as proof that the quit helped. Fan and thermal alerts
+have no Quit target: current workload context cannot establish fan-control
+ownership or prove which app caused heat or clock throttling. Fan checks compare
+measured RPM for matching driver labels only with sufficient continuous coverage;
+fan noise and causality remain unproven.
 
 For the App access surface, the owner also requested narrow, explicit actions:
 move one user-owned LaunchAgent file to Trash after exact-file review, or reset
