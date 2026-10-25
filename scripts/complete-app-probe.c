@@ -1,5 +1,6 @@
 #include <ApplicationServices/ApplicationServices.h>
 #include <libproc.h>
+#include <mach/mach_time.h>
 #include <sys/resource.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,8 +22,11 @@ int main(int argc, char **argv) {
         if (owner == pid && layer == 0) visible++;
     }
     CFRelease(windows);
-    printf("{\"residentBytes\":%llu,\"physicalFootprintBytes\":%llu,\"userTimeRaw\":%llu,\"systemTimeRaw\":%llu,\"packageIdleWakeups\":%llu,\"interruptWakeups\":%llu,\"startIdentity\":%llu,\"visibleWindows\":%d}\n",
+    mach_timebase_info_data_t timebase;
+    if (mach_timebase_info(&timebase) != KERN_SUCCESS || timebase.denom == 0) return 5;
+    printf("{\"residentBytes\":%llu,\"physicalFootprintBytes\":%llu,\"userTimeRaw\":%llu,\"systemTimeRaw\":%llu,\"packageIdleWakeups\":%llu,\"interruptWakeups\":%llu,\"startIdentity\":%llu,\"visibleWindows\":%d,\"machTimebaseNumerator\":%u,\"machTimebaseDenominator\":%u}\n",
         info.ri_resident_size, info.ri_phys_footprint, info.ri_user_time, info.ri_system_time,
-        info.ri_pkg_idle_wkups, info.ri_interrupt_wkups, info.ri_proc_start_abstime, visible);
+        info.ri_pkg_idle_wkups, info.ri_interrupt_wkups, info.ri_proc_start_abstime, visible,
+        timebase.numer, timebase.denom);
     return 0;
 }
