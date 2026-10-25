@@ -8,8 +8,9 @@ final class AgentMenuSummaryTests: XCTestCase {
     @MainActor
     func testDeferredChangesUseLatestStateCoalesceBurstsAndUpdateWhilePaused() async throws {
         let model = LiveViewModel()
+        let status = AgentMenuStatus(model: model)
         var values: [AgentMenuSummary] = []
-        let subscription = AgentMenuSummary.changes(from: model).sink { values.append($0) }
+        let subscription = status.$summary.dropFirst().sink { values.append($0) }
         defer { subscription.cancel() }
         let date = Date()
         let agent = LiveProcess(id: .init(pid: 500, started: 10), parent: 1, uid: getuid(), name: "codex",

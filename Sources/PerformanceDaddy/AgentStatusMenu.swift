@@ -29,29 +29,41 @@ struct AgentMenuSummary: Equatable {
     }
 }
 
+@MainActor
+final class AgentMenuStatus: ObservableObject {
+    @Published private(set) var summary: AgentMenuSummary
+    private var subscription: AnyCancellable?
+
+    init(model: LiveViewModel) {
+        summary = AgentMenuSummary(activities: model.agentWallTiles.map(\.activity))
+        subscription = AgentMenuSummary.changes(from: model).sink { [weak self] current in
+            guard let self, summary != current else { return }
+            summary = current
+        }
+    }
+}
+
 struct AgentStatusMenuBarLabel: View {
     let model: LiveViewModel
     let alerts: LoadAlertCenter
-    @State private var summary = AgentMenuSummary(activities: [])
+    @StateObject private var status: AgentMenuStatus
     @Environment(\.openWindow) private var openWindow
 
+    init(model: LiveViewModel, alerts: LoadAlertCenter) {
+        self.model = model
+        self.alerts = alerts
+        _status = StateObject(wrappedValue: AgentMenuStatus(model: model))
+    }
+
     var body: some View {
-        AgentStatusSummaryLabel(summary: summary).equatable()
-        .onReceive(AgentMenuSummary.changes(from: model)) { current in
-            if current != summary { summary = current }
-        }
+        AgentStatusSummaryLabel(summary: status.summary).equatable()
         .onAppear {
-            updateSummary()
             // The menu bar label lives for the whole session, unlike any window.
             alerts.attach(to: model) { openWindow(id: "main") }
             model.start()
         }
     }
 
-    private func updateSummary() {
-        let current = AgentMenuSummary(activities: model.agentWallTiles.map(\.activity))
-        if current != summary { summary = current }
-    }
 }
 
 private struct AgentStatusSummaryLabel: View, Equatable {
