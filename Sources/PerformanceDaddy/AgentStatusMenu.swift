@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import PerformanceCore
 import SwiftUI
 
@@ -18,6 +19,13 @@ struct AgentMenuSummary: Equatable {
     var accessibilityLabel: String {
         "Agent sessions: \(working) recently working, \(total) detected in total, \(attention) waiting, rate limited, stopped, or status unavailable, \(failed) failed"
     }
+
+    @MainActor
+    static func changes(from model: LiveViewModel) -> AnyPublisher<AgentMenuSummary, Never> {
+        model.objectWillChange.debounce(for: .milliseconds(25), scheduler: DispatchQueue.main)
+            .map { AgentMenuSummary(activities: model.agentWallTiles.map(\.activity)) }
+            .removeDuplicates().eraseToAnyPublisher()
+    }
 }
 
 struct AgentStatusMenuBarLabel: View {
@@ -28,8 +36,8 @@ struct AgentStatusMenuBarLabel: View {
 
     var body: some View {
         AgentStatusSummaryLabel(summary: summary).equatable()
-        .onReceive(model.objectWillChange.receive(on: RunLoop.main)) { _ in
-            updateSummary()
+        .onReceive(AgentMenuSummary.changes(from: model)) { current in
+            if current != summary { summary = current }
         }
         .onAppear {
             updateSummary()
