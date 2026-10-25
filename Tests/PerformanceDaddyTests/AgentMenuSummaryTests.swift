@@ -44,6 +44,7 @@ final class AgentMenuSummaryTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(values.last?.working, 1, "Continuous unrelated updates must not starve status changes")
+        XCTAssertEqual(status.summary.working, 1)
     }
 
     func testDetectedIdleAndUnknownAreNotCountedAsRecentlyWorking() {
