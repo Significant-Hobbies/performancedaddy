@@ -22,7 +22,8 @@ struct AgentMenuSummary: Equatable {
 
     @MainActor
     static func changes(from model: LiveViewModel) -> AnyPublisher<AgentMenuSummary, Never> {
-        model.objectWillChange.debounce(for: .milliseconds(25), scheduler: DispatchQueue.main)
+        model.objectWillChange.receive(on: DispatchQueue.main)
+            .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
             .map { AgentMenuSummary(activities: model.agentWallTiles.map(\.activity)) }
             .removeDuplicates().eraseToAnyPublisher()
     }

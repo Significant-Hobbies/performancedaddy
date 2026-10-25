@@ -37,6 +37,12 @@ final class AgentMenuSummaryTests: XCTestCase {
         XCTAssertEqual(values.count, 2)
         XCTAssertEqual(values.last?.working, 0)
         XCTAssertEqual(values.last?.attention, 1)
+        model.recordAgentSignal(try signal("PreToolUse"))
+        for index in 40..<70 {
+            model.search = String(index)
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(values.last?.working, 1, "Continuous unrelated updates must not starve status changes")
     }
 
     func testDetectedIdleAndUnknownAreNotCountedAsRecentlyWorking() {
