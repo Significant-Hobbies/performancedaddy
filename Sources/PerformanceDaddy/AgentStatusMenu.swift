@@ -21,18 +21,27 @@ struct AgentMenuSummary: Equatable {
 }
 
 struct AgentStatusMenuBarLabel: View {
-    @ObservedObject var model: LiveViewModel
+    let model: LiveViewModel
     let alerts: LoadAlertCenter
+    @State private var summary = AgentMenuSummary(activities: [])
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        let summary = AgentMenuSummary(activities: model.agentWallTiles.map(\.activity))
         AgentStatusSummaryLabel(summary: summary).equatable()
+        .onReceive(model.objectWillChange.receive(on: RunLoop.main)) { _ in
+            updateSummary()
+        }
         .onAppear {
+            updateSummary()
             // The menu bar label lives for the whole session, unlike any window.
             alerts.attach(to: model) { openWindow(id: "main") }
             model.start()
         }
+    }
+
+    private func updateSummary() {
+        let current = AgentMenuSummary(activities: model.agentWallTiles.map(\.activity))
+        if current != summary { summary = current }
     }
 }
 
