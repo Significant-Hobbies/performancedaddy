@@ -91,7 +91,7 @@ final class DesignEvidenceTests: XCTestCase {
     }
 
     func testFanInvestigationRendersSetupAndUnavailableEvidenceAtNativeSizes() throws {
-        for width: CGFloat in [760, 1_220] {
+        for width: CGFloat in [760, 876, 1_220] {
             for hasReport in [false, true] {
                 let model = DiagnosisViewModel()
                 if hasReport {
@@ -104,7 +104,7 @@ final class DesignEvidenceTests: XCTestCase {
                     }
                     model.review(DiagnosticEngine().analyze(.init(startedAt: start, endedAt: start.addingTimeInterval(12), samples: samples, isFixture: true)))
                 }
-                let view = NSHostingView(rootView: FanInvestigationView(model: model)
+                let view = NSHostingView(rootView: FanInvestigationView(model: model, snapshot: hasReport ? nil : fixtureSnapshot())
                     .smTheme(PerformanceTheme.palette)
                     .frame(width: width, height: 800))
                 view.frame = NSRect(x: 0, y: 0, width: width, height: 800)

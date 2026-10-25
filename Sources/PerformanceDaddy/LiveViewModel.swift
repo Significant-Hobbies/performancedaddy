@@ -67,7 +67,8 @@ final class LiveViewModel: ObservableObject {
     @Published var paused = false { didSet {
         if paused != oldValue {
             needsNewMeasurementWindow = true; measurementGeneration = UUID()
-            if paused { heartbeat.stop() } else if task != nil { heartbeat.start() }
+            measurementResetObserver?()
+            updateHeartbeat()
         }
     } }
     @Published var includeSystem = false { didSet { rowCache.removeAll() } }
@@ -96,8 +97,12 @@ final class LiveViewModel: ObservableObject {
     private var visibleSurfaces: Set<UUID> = []
     private var surfaceRefreshTask: Task<Void, Never>?
     var hasVisibleSurface: Bool { !visibleSurfaces.isEmpty }
+    var needsCloserMonitoring = false
+    @Published var requestedDestination: String?
     var automaticRefreshInterval: Double {
-        Self.refreshInterval(after: snapshot?.scanSeconds)
+        let foreground = Self.refreshInterval(after: snapshot?.scanSeconds)
+        guard !hasVisibleSurface, !capturingIncident else { return foreground }
+        return max(foreground, needsCloserMonitoring ? 10 : 30)
     }
     @Published private(set) var recentEvidenceCount = 0
     @Published private(set) var latestEvidence: SystemSample?
@@ -148,6 +153,7 @@ final class LiveViewModel: ObservableObject {
     private var sleepObserver: NSObjectProtocol?
     /// Receives each completed live sample, e.g. for sustained-load alerts.
     var sampleObserver: ((LiveSnapshot) -> Void)?
+    var measurementResetObserver: (() -> Void)?
     private var agentSignalObserver: NSObjectProtocol?
 
     init(lifecycleStore: LifecycleHistoryStore = LifecycleHistoryStore()) {
@@ -156,7 +162,7 @@ final class LiveViewModel: ObservableObject {
 
     func start() {
         guard task == nil else { return }
-        if !paused { heartbeat.start() }
+        updateHeartbeat()
         if localEventMonitor == nil {
             localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .leftMouseDown, .rightMouseDown, .scrollWheel]) { [weak self] event in
                 if self?.paused == false { self?.heartbeat.recordLocalEvent(timestamp: event.timestamp) }
@@ -189,7 +195,10 @@ final class LiveViewModel: ObservableObject {
             sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                Task { @MainActor in self?.heartbeat.stop(); self?.measurementGeneration = UUID() }
+                Task { @MainActor in
+                    self?.heartbeat.stop(); self?.measurementGeneration = UUID()
+                    self?.measurementResetObserver?()
+                }
             }
         }
         observeForeground()
@@ -214,6 +223,7 @@ final class LiveViewModel: ObservableObject {
         let wasVisible = hasVisibleSurface
         if visible { visibleSurfaces.insert(id) } else { visibleSurfaces.remove(id) }
         guard wasVisible != hasVisibleSurface else { return }
+        updateHeartbeat()
         rowCache.removeAll()
         if !hasVisibleSurface {
             ProcessIconCache.images.removeAllObjects()
@@ -230,6 +240,11 @@ final class LiveViewModel: ObservableObject {
                 await self.refresh()
             }
         }
+    }
+
+    private func updateHeartbeat() {
+        if !paused && (hasVisibleSurface || capturingIncident) { heartbeat.start() }
+        else { heartbeat.stop() }
     }
 
     func recordAgentSignal(_ signal: AgentWallSignal) {
@@ -310,7 +325,7 @@ final class LiveViewModel: ObservableObject {
         refreshForegroundContext()
         let generation = measurementGeneration
         let target = probeTarget(in: result)
-        let appProbe = await appResponseReader.sample(target: target, enabled: appResponseEnabled && !paused)
+        let appProbe = await appResponseReader.sample(target: target, enabled: appResponseEnabled && !paused && (!background || capturingIncident))
         refreshForegroundContext()
         appResponsePermissionAvailable = AppProbePermission.available
         let previousEventCount = lifecycle.events.count
@@ -324,7 +339,8 @@ final class LiveViewModel: ObservableObject {
         confirmedExits.formUnion(gone)
         confirmedExits.formIntersection(Set(lifecycle.pendingExitChecks + outcomes.map { $0.process.id }))
         let elapsed = historyOrigin.duration(to: .now).components
-        processHistory.observe(result.processes, at: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
+        processHistory.observe(result.processes, at: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18,
+                               maximumGap: background ? 65 : 30)
         snapshot = result
         let liveIdentities = Set(result.processes.map(\.id))
         // A missing inventory row does not prove exit. Preserve recent hooks
@@ -401,7 +417,8 @@ final class LiveViewModel: ObservableObject {
             throw NSError(domain: "PerformanceDaddy", code: 1, userInfo: [NSLocalizedDescriptionKey: "Resume monitoring and finish any reviewed action before recording."])
         }
         capturingIncident = true
-        defer { capturingIncident = false }
+        updateHeartbeat()
+        defer { capturingIncident = false; updateHeartbeat() }
         let start = Date()
         let deadline = ContinuousClock.now.advanced(by: .seconds(duration))
         var samples = marker.map { incidentBuffer.preceding($0.date) } ?? []
@@ -804,7 +821,8 @@ final class LiveViewModel: ObservableObject {
     func handleSystemWake() {
         needsNewMeasurementWindow = true
         measurementGeneration = UUID()
-        if task != nil && !paused { heartbeat.start() }
+        measurementResetObserver?()
+        if task != nil { updateHeartbeat() }
     }
 
     func restoreLifecycle() async {

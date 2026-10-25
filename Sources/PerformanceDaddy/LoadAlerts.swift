@@ -14,6 +14,7 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         static let memorySeconds = "loadAlerts.memorySeconds"
         static let cooldownMinutes = "loadAlerts.cooldownMinutes"
         static let ignored = "loadAlerts.ignored"
+        static let watchdog = "loadAlerts.watchdog"
     }
     private enum Category {
         static let quitApp = "performancedaddy.load.app"
@@ -31,6 +32,7 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         didSet {
             defaults.set(enabled, forKey: Key.enabled)
             tracker.reset()
+            live?.needsCloserMonitoring = false
             if enabled { requestAuthorization() }
         }
     }
@@ -43,11 +45,28 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         didSet { defaults.set(ignored, forKey: Key.ignored) }
     }
     @Published private(set) var authorization: UNAuthorizationStatus = .notDetermined
+    @Published var watchdogPolicy: WatchdogPolicy {
+        didSet {
+            if let data = try? JSONEncoder().encode(watchdogPolicy) { defaults.set(data, forKey: Key.watchdog) }
+            applyPolicy()
+        }
+    }
+    @Published private(set) var snoozedUntil: Date?
+    struct RecentAlert: Identifiable {
+        let id = UUID()
+        let date: Date
+        let kind: LoadAlert.Kind
+        let title: String
+        let body: String
+        let identity: ProcessIdentity?
+    }
+    /// Session-only summaries: no snapshots, process paths, or unbounded history.
+    @Published private(set) var recent: [RecentAlert] = []
 
     private let defaults: UserDefaults
     private weak var live: LiveViewModel?
     private var openMainWindow: (() -> Void)?
-    private var tracker = SustainedLoadTracker()
+    private var tracker = PerformanceWatchdog()
     private var pending: [String: LoadAlert] = [:]
 
     /// UNUserNotificationCenter requires a bundled app; tests and `swift run` have none.
@@ -63,13 +82,16 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         memorySeconds = defaults.object(forKey: Key.memorySeconds) as? Int ?? 60
         cooldownMinutes = defaults.object(forKey: Key.cooldownMinutes) as? Int ?? 15
         ignored = defaults.dictionary(forKey: Key.ignored) as? [String: String] ?? [:]
+        watchdogPolicy = defaults.data(forKey: Key.watchdog).flatMap { try? JSONDecoder().decode(WatchdogPolicy.self, from: $0) } ?? WatchdogPolicy()
         super.init()
         applyPolicy()
     }
 
     var policy: LoadAlertPolicy {
-        LoadAlertPolicy(cpuFraction: Double(cpuPercent) / 100, cpuSeconds: TimeInterval(cpuSeconds),
-                        memorySeconds: TimeInterval(memorySeconds), cooldown: TimeInterval(cooldownMinutes * 60))
+        LoadAlertPolicy(cpuFraction: Double(max(50, min(100, cpuPercent))) / 100,
+                        cpuSeconds: TimeInterval(max(30, min(600, cpuSeconds))),
+                        memorySeconds: TimeInterval(max(30, min(600, memorySeconds))),
+                        cooldown: TimeInterval(max(5, min(120, cooldownMinutes)) * 60))
     }
 
     func attach(to live: LiveViewModel, openMainWindow: @escaping () -> Void) {
@@ -77,6 +99,10 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         self.live = live
         self.openMainWindow = openMainWindow
         live.sampleObserver = { [weak self] snapshot in self?.observe(snapshot) }
+        live.measurementResetObserver = { [weak self] in
+            self?.tracker.reset()
+            self?.live?.needsCloserMonitoring = false
+        }
         guard Self.notificationsAvailable else { return }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
@@ -94,7 +120,14 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         refreshAuthorization()
     }
 
-    func unignore(_ key: String) { ignored.removeValue(forKey: key) }
+    func unignore(_ key: String) { ignored.removeValue(forKey: key); tracker.reset() }
+    func snooze(minutes: Int) {
+        snoozedUntil = Date().addingTimeInterval(TimeInterval(max(1, min(1_440, minutes)) * 60))
+        tracker.reset(); live?.needsCloserMonitoring = false
+    }
+    func resumeAlerts() { snoozedUntil = nil; tracker.reset() }
+    func clearRecent() { recent.removeAll() }
+    func ignore(_ key: String, name: String) { ignored[key] = name; tracker.reset() }
 
     func refreshAuthorization() {
         guard Self.notificationsAvailable else { return }
@@ -104,7 +137,7 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         }
     }
 
-    private func requestAuthorization() {
+    func requestAuthorization() {
         guard Self.notificationsAvailable else { return }
         Task {
             _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
@@ -118,15 +151,48 @@ final class LoadAlertCenter: NSObject, ObservableObject {
     }
 
     private func applyPolicy() {
-        tracker.policy = policy
+        tracker.loadPolicy = policy
+        var advanced = watchdogPolicy
+        advanced.cooldown = policy.cooldown
+        tracker.policy = advanced
         tracker.reset()
+        live?.needsCloserMonitoring = false
     }
 
     func observe(_ snapshot: LiveSnapshot) {
-        guard enabled, authorization == .authorized || authorization == .provisional else { tracker.reset(); return }
-        guard let alert = tracker.observe(snapshot, coreCount: ProcessInfo.processInfo.processorCount,
-                                          ignored: Set(ignored.keys)) else { return }
-        post(alert)
+        guard enabled, snoozedUntil.map({ $0 > snapshot.date }) != true else {
+            tracker.reset(); live?.needsCloserMonitoring = false; return
+        }
+        if snoozedUntil != nil { snoozedUntil = nil }
+        let alerts = tracker.observe(snapshot, coreCount: ProcessInfo.processInfo.processorCount, ignored: Set(ignored.keys))
+        live?.needsCloserMonitoring = tracker.needsCloserLook
+        for alert in alerts {
+            let text = Self.content(for: alert, actionable: alert.contributor?.owner.stopRestriction == nil)
+            recent.insert(RecentAlert(date: alert.date, kind: alert.kind, title: text.title, body: text.body, identity: alert.contributor?.owner.id), at: 0)
+            if recent.count > 50 { recent.removeLast(recent.count - 50) }
+        }
+        if authorization == .authorized || authorization == .provisional {
+            var posted: Set<String> = []
+            for alert in alerts.sorted(by: { Self.priority($0.kind) < Self.priority($1.kind) }) {
+                let key: String
+                if alert.kind == .fans || alert.kind == .thermal { key = "heat" }
+                else if let owner = alert.contributor?.owner.id { key = "\(owner.pid):\(owner.started)" }
+                else { key = alert.kind.rawValue }
+                if posted.insert(key).inserted { post(alert) }
+            }
+        }
+    }
+
+    private static func priority(_ kind: LoadAlert.Kind) -> Int {
+        switch kind {
+        case .thermal: 0
+        case .memory: 1
+        case .fans: 2
+        case .cpu: 3
+        case .processCPU: 4
+        case .memoryGrowth: 5
+        case .largeMemory: 6
+        }
     }
 
     // MARK: Content
@@ -154,6 +220,13 @@ final class LoadAlertCenter: NSObject, ObservableObject {
             }
             return (title, "Pressure stayed elevated for \(span). \(leader.name) holds the most memory (\(LiveViewModel.bytes(leader.memoryBytes)))."
                 + (actionable ? "" : " It is protected and can't be quit from here."))
+        case .processCPU, .largeMemory, .memoryGrowth:
+            let name = alert.contributor.map { $0.kind == .app ? "\($0.name) and its helpers" : $0.name } ?? "Workload"
+            let title = alert.kind == .processCPU ? "Sustained workload CPU" : alert.kind == .largeMemory ? "Workload memory limit" : "Growing workload memory"
+            return (title, "\(name) · \(span). \(alert.detail ?? "Open PerformanceDaddy to review.")")
+        case .thermal, .fans:
+            return (alert.kind == .thermal ? "Sustained thermal pressure" : "Sustained high fan speed",
+                    "\(span). \(alert.detail ?? "Open Fans & heat to investigate.")")
         }
     }
 
@@ -166,7 +239,7 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         content.title = text.title
         content.body = text.body
         // Kept in the local notification so "don't alert" works after a relaunch.
-        content.userInfo = ["alert": id, "ignoreKey": alert.contributor?.ignoreKey ?? "", "name": alert.contributor?.name ?? ""]
+        content.userInfo = ["alert": id, "ignoreKey": alert.contributor?.ignoreKey ?? "", "name": alert.contributor?.name ?? "", "kind": alert.kind.rawValue]
         content.categoryIdentifier = !actionable ? Category.info
             : alert.contributor?.kind == .app ? Category.quitApp : Category.stopProcess
         pending = pending.filter { Date().timeIntervalSince($0.value.date) < Self.actionableSeconds }
@@ -185,7 +258,7 @@ final class LoadAlertCenter: NSObject, ObservableObject {
 
     // MARK: Responses
 
-    fileprivate func handle(action: String, alertID: String?, ignoreKey: String?, name: String?) async {
+    fileprivate func handle(action: String, alertID: String?, ignoreKey: String?, name: String?, kind: LoadAlert.Kind? = nil) async {
         let alert = alertID.flatMap { pending[$0] }
         switch action {
         case Action.quit:
@@ -204,7 +277,7 @@ final class LoadAlertCenter: NSObject, ObservableObject {
             guard let ignoreKey, !ignoreKey.isEmpty else { return }
             ignored[ignoreKey] = name?.isEmpty == false ? name : ignoreKey
         case UNNotificationDefaultActionIdentifier:
-            showApp()
+            showApp(for: alert?.kind ?? kind, identity: alert?.contributor?.owner.id)
         default:
             break
         }
@@ -221,11 +294,21 @@ final class LoadAlertCenter: NSObject, ObservableObject {
             body = String(format: "CPU in use: %.1f → %.1f cores.", before, after)
         case .memory:
             body = "Memory pressure: \(alert.pressure) → \(snapshot.pressure)."
+        case .processCPU:
+            guard let before = alert.usedCores, let after = snapshot.system.usedCPUCores else { return }
+            body = String(format: "System CPU in use: %.1f → %.1f cores.", before, after)
+        case .largeMemory, .memoryGrowth:
+            body = "Memory pressure: \(alert.pressure) → \(snapshot.pressure)."
+        case .thermal, .fans: return
         }
         postNote("After quitting", body + " One later sample, not a controlled comparison.")
     }
 
-    private func showApp() {
+    func showApp(for kind: LoadAlert.Kind? = nil, identity: ProcessIdentity? = nil) {
+        if let identity, live?.snapshot?.processes.contains(where: { $0.id == identity }) == true { live?.selection = [identity] }
+        if kind == .fans || kind == .thermal { live?.requestedDestination = "Fans & heat" }
+        else if kind == .memory || kind == .largeMemory || kind == .memoryGrowth { live?.requestedDestination = "Memory" }
+        else { live?.requestedDestination = "Processes" }
         openMainWindow?()
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
@@ -242,57 +325,210 @@ extension LoadAlertCenter: UNUserNotificationCenterDelegate {
         let action = response.actionIdentifier
         let info = response.notification.request.content.userInfo
         await handle(action: action, alertID: info["alert"] as? String,
-                      ignoreKey: info["ignoreKey"] as? String, name: info["name"] as? String)
+                     ignoreKey: info["ignoreKey"] as? String, name: info["name"] as? String,
+                     kind: (info["kind"] as? String).flatMap(LoadAlert.Kind.init(rawValue:)))
     }
 }
 
 struct LoadAlertSettingsView: View {
     @ObservedObject var alerts: LoadAlertCenter
+    let live: LiveViewModel
+    @State private var workloadSearch = ""
+    @State private var selectedTab = 0
+    @State private var windowOpen = true
+    @State private var availableWorkloads: [LoadContributor] = []
+    @State private var monitoringStatus = ""
+    @State private var isPaused = false
 
     var body: some View {
+        TabView(selection: $selectedTab) {
+            rules.tabItem { Label("Alerts", systemImage: "bell") }.tag(0)
+            workloads.tabItem { Label("Workload limits", systemImage: "app.badge") }.tag(1)
+            activity.tabItem { Label("Recent alerts", systemImage: "clock") }.tag(2)
+        }
+        .padding(12)
+        .frame(width: 600, height: 700)
+        .background(MonitoringSurface(model: live, tracksSampling: false, onWindowOpen: { open in
+            windowOpen = open
+            if open { isPaused = live.paused; updateStatus(); if selectedTab == 1 { updateWorkloads(from: live.snapshot) } }
+            else { availableWorkloads.removeAll() }
+        }))
+        .onAppear { alerts.refreshAuthorization(); isPaused = live.paused; updateStatus() }
+        .onChange(of: selectedTab) { _, tab in if tab == 1 { updateWorkloads(from: live.snapshot) } }
+        .onReceive(live.$snapshot) { snapshot in
+            guard windowOpen else { return }
+            updateStatus()
+            if selectedTab == 1 { updateWorkloads(from: snapshot) }
+        }
+        .onReceive(live.$paused.removeDuplicates()) { paused in if windowOpen { isPaused = paused } }
+    }
+
+    private var rules: some View {
         Form {
             Section {
-                Toggle("Notify me about sustained load", isOn: $alerts.enabled)
-                if alerts.enabled, alerts.authorization == .denied {
+                Toggle("Notify me about sustained performance problems", isOn: $alerts.enabled)
+                if isPaused {
+                    Label("Monitoring is paused. Resume from the menu or main window.", systemImage: "pause.circle")
+                } else {
+                    Text(monitoringStatus).foregroundStyle(.secondary)
+                }
+                if let until = alerts.snoozedUntil, until > Date() {
                     HStack {
-                        Text("Notifications are turned off for PerformanceDaddy in System Settings.")
-                            .foregroundStyle(.secondary)
-                        Button("Open Settings") {
-                            if let id = Bundle.main.bundleIdentifier,
-                               let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
-                                NSWorkspace.shared.open(url)
-                            }
+                        Text("Alerts snoozed until \(until.formatted(date: .omitted, time: .shortened))")
+                        Spacer()
+                        Button("Resume alerts", action: alerts.resumeAlerts)
+                    }
+                } else {
+                    Menu("Snooze alerts") {
+                        Button("15 minutes") { alerts.snooze(minutes: 15) }
+                        Button("1 hour") { alerts.snooze(minutes: 60) }
+                    }.disabled(!alerts.enabled)
+                }
+                if alerts.enabled, alerts.authorization == .denied {
+                    Text("System notifications are off. Findings still appear in Recent alerts.").foregroundStyle(.secondary)
+                    Button("Open Notification Settings") {
+                        if let id = Bundle.main.bundleIdentifier,
+                           let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
+                            NSWorkspace.shared.open(url)
                         }
                     }
+                } else if alerts.enabled, alerts.authorization == .notDetermined, LoadAlertCenter.notificationsAvailable {
+                    Button("Allow system notifications…", action: alerts.requestAuthorization)
                 } else if !LoadAlertCenter.notificationsAvailable {
-                    Text("Notifications need the bundled app.").foregroundStyle(.secondary)
+                    Text("System notifications need the bundled app.").foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Alerts never quit anything on their own. Quit only runs when you press it on an alert from the last 10 minutes; apps get a normal quit request and may ask you to save.")
-                    .foregroundStyle(.secondary)
+                Text("Local and read-only. Alerts never change fan speeds or stop anything automatically. Short spikes are ignored; missing readings break a sustained window.")
             }
-            Section("Thresholds") {
+            Section("Whole Mac") {
                 Stepper("CPU: \(alerts.cpuPercent)% of all cores", value: $alerts.cpuPercent, in: 50...100, step: 5)
                 Stepper("CPU sustained for \(alerts.cpuSeconds) seconds", value: $alerts.cpuSeconds, in: 30...600, step: 30)
                 Stepper("Memory pressure sustained for \(alerts.memorySeconds) seconds", value: $alerts.memorySeconds, in: 30...600, step: 30)
-                Stepper("Wait \(alerts.cooldownMinutes) minutes between alerts", value: $alerts.cooldownMinutes, in: 5...120, step: 5)
+                Stepper("Repeat cooldown: \(alerts.cooldownMinutes) minutes", value: $alerts.cooldownMinutes, in: 5...120, step: 5)
             }
-            Section("Not alerting for") {
-                if alerts.ignored.isEmpty {
-                    Text("Nothing ignored").foregroundStyle(.secondary)
-                } else {
-                    ForEach(alerts.ignored.sorted { $0.value < $1.value }, id: \.key) { key, name in
-                        HStack {
-                            Text(name)
-                            Spacer()
-                            Button("Remove") { alerts.unignore(key) }
+            Section {
+                kindToggle("Sustained workload CPU", .processCPU)
+                Stepper("CPU: \(alerts.watchdogPolicy.processCPUPercent)% (100% = one core)", value: $alerts.watchdogPolicy.processCPUPercent, in: 20...800, step: 10)
+                Stepper("CPU / memory limit duration: \(Int(alerts.watchdogPolicy.processSeconds)) seconds", value: $alerts.watchdogPolicy.processSeconds, in: 60...900, step: 30)
+                kindToggle("Resident memory above a limit", .largeMemory)
+                Stepper("Resident memory: \(alerts.watchdogPolicy.memoryGB) GB", value: $alerts.watchdogPolicy.memoryGB, in: 1...128)
+                kindToggle("Substantial memory growth", .memoryGrowth)
+                Stepper("Growth: \(alerts.watchdogPolicy.growthMB) MB and at least 50%", value: $alerts.watchdogPolicy.growthMB, in: 128...8192, step: 128)
+                Stepper("Growth window: \(Int(alerts.watchdogPolicy.growthSeconds / 60)) minutes", value: $alerts.watchdogPolicy.growthSeconds, in: 120...900, step: 60)
+            } header: {
+                Text("Individual workloads")
+            } footer: {
+                Text("Apps include their helpers. Resident memory can include shared pages; growth does not prove a leak. Per-workload limits override these thresholds.")
+            }
+            Section {
+                kindToggle("Sustained serious or critical thermal pressure", .thermal)
+                Stepper("Thermal duration: \(Int(alerts.watchdogPolicy.thermalSeconds)) seconds", value: $alerts.watchdogPolicy.thermalSeconds, in: 30...600, step: 30)
+                kindToggle("Sustained high measured fan speed", .fans)
+                Stepper("Fan speed: \(alerts.watchdogPolicy.fanPercent)% of reported maximum", value: $alerts.watchdogPolicy.fanPercent, in: 50...100, step: 5)
+                Stepper("Fan duration: \(Int(alerts.watchdogPolicy.fanSeconds)) seconds", value: $alerts.watchdogPolicy.fanSeconds, in: 60...600, step: 30)
+            } header: {
+                Text("Fans & heat")
+            } footer: {
+                Text("Fan alerts need readable RPM and a reported maximum. Missing sensors remain unavailable. Thermal alerts identify macOS pressure, not a proven heating app or clock throttle.")
+            }
+        }.formStyle(.grouped)
+    }
+
+    private func kindToggle(_ title: String, _ kind: LoadAlert.Kind) -> some View {
+        Toggle(title, isOn: Binding(get: { alerts.watchdogPolicy.kinds.contains(kind) }, set: { enabled in
+            if enabled { alerts.watchdogPolicy.kinds.insert(kind) }
+            else { alerts.watchdogPolicy.kinds.remove(kind) }
+        }))
+    }
+
+    private var workloads: some View {
+        Form {
+            Section {
+                TextField("Find a running app or process", text: $workloadSearch)
+                Menu("Add a running workload") {
+                    ForEach(runningWorkloads, id: \.ignoreKey) { workload in
+                        Button(workload.name) {
+                            alerts.watchdogPolicy.limits[workload.ignoreKey] = WorkloadAlertLimit(name: workload.name,
+                                cpuPercent: alerts.watchdogPolicy.processCPUPercent, memoryGB: alerts.watchdogPolicy.memoryGB)
                         }
+                    }
+                }.disabled(live.snapshot == nil)
+                ForEach(alerts.watchdogPolicy.limits.keys.sorted(), id: \.self) { key in
+                    if let limit = alerts.watchdogPolicy.limits[key] {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(limit.name).font(.headline)
+                                Spacer()
+                                Button("Remove") { alerts.watchdogPolicy.limits.removeValue(forKey: key) }
+                            }
+                            Stepper("CPU: \(limit.cpuPercent)%", value: Binding(get: {
+                                alerts.watchdogPolicy.limits[key]?.cpuPercent ?? 100
+                            }, set: { alerts.watchdogPolicy.limits[key]?.cpuPercent = $0 }), in: 20...1600, step: 10)
+                            Stepper("Resident memory: \(limit.memoryGB) GB", value: Binding(get: {
+                                alerts.watchdogPolicy.limits[key]?.memoryGB ?? 4
+                            }, set: { alerts.watchdogPolicy.limits[key]?.memoryGB = $0 }), in: 1...128)
+                        }.padding(.vertical, 4)
+                    }
+                }
+            } header: {
+                Text("Custom limits")
+            } footer: {
+                Text("Custom limits enable both CPU and resident-memory alerts using the duration on the Alerts tab. Limits and mutes follow the app, executable or agent provider across launches; sustained evidence always starts fresh.")
+            }
+            Section("Muted workloads") {
+                Menu("Mute a running workload") {
+                    ForEach(runningWorkloads, id: \.ignoreKey) { workload in
+                        Button(workload.name) { alerts.ignore(workload.ignoreKey, name: workload.name) }
+                    }
+                }.disabled(live.snapshot == nil)
+                if alerts.ignored.isEmpty { Text("Nothing muted").foregroundStyle(.secondary) }
+                ForEach(alerts.ignored.sorted { $0.value < $1.value }, id: \.key) { key, name in
+                    HStack {
+                        Text(name)
+                        Spacer()
+                        Button("Unmute") { alerts.unignore(key) }
                     }
                 }
             }
-        }
-        .formStyle(.grouped)
-        .frame(width: 460)
-        .onAppear { alerts.refreshAuthorization() }
+        }.formStyle(.grouped)
+    }
+
+    private var runningWorkloads: [LoadContributor] {
+        Array(availableWorkloads.filter { workloadSearch.isEmpty || $0.name.localizedCaseInsensitiveContains(workloadSearch) }.prefix(80))
+    }
+
+    private func updateWorkloads(from snapshot: LiveSnapshot?) {
+        var seen: Set<String> = []
+        availableWorkloads = LoadContributors.group(snapshot?.processes ?? [])
+            .filter { seen.insert($0.ignoreKey).inserted }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private func updateStatus() {
+        monitoringStatus = live.hasVisibleSurface ? "Watching live while a diagnostic window is visible." :
+            "Watching in the background. Healthy captures are 30 seconds apart; sustained signals get a closer look."
+    }
+
+    private var activity: some View {
+        Form {
+            Section {
+                Text("Last 50 alerts from this session. Summaries stay in memory and disappear when the app quits.").foregroundStyle(.secondary)
+                if alerts.recent.isEmpty { Text("No sustained problems detected while alerts were enabled.") }
+                ForEach(alerts.recent) { item in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(item.title).font(.headline)
+                            Spacer()
+                            Text(item.date, style: .time).foregroundStyle(.secondary)
+                        }
+                        Text(item.body).fixedSize(horizontal: false, vertical: true)
+                        Button(item.kind == .thermal || item.kind == .fans ? "Investigate Fans & heat" : "Inspect current readings") {
+                            alerts.showApp(for: item.kind, identity: item.identity)
+                        }
+                    }.padding(.vertical, 6)
+                }
+                Button("Clear recent alerts", action: alerts.clearRecent).disabled(alerts.recent.isEmpty)
+            }
+        }.formStyle(.grouped)
     }
 }

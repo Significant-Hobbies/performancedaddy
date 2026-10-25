@@ -1,8 +1,9 @@
 import AppKit
+import Combine
 import PerformanceCore
 import SwiftUI
 
-struct AgentMenuSummary {
+struct AgentMenuSummary: Equatable {
     let working: Int
     let attention: Int
     let failed: Int
@@ -18,32 +19,73 @@ struct AgentMenuSummary {
     var accessibilityLabel: String {
         "Agent sessions: \(working) recently working, \(total) detected in total, \(attention) waiting, rate limited, stopped, or status unavailable, \(failed) failed"
     }
+
+    @MainActor
+    static func changes(from model: LiveViewModel) -> AnyPublisher<AgentMenuSummary, Never> {
+        model.objectWillChange.receive(on: DispatchQueue.main)
+            .throttle(for: .milliseconds(100), scheduler: DispatchQueue.main, latest: true)
+            .map { AgentMenuSummary(activities: model.agentWallTiles.map(\.activity)) }
+            .removeDuplicates().eraseToAnyPublisher()
+    }
+}
+
+@MainActor
+final class AgentMenuStatus: ObservableObject {
+    @Published private(set) var summary: AgentMenuSummary
+    private var subscription: AnyCancellable?
+
+    init(model: LiveViewModel) {
+        summary = AgentMenuSummary(activities: model.agentWallTiles.map(\.activity))
+        subscription = AgentMenuSummary.changes(from: model).sink { [weak self] current in
+            guard let self, summary != current else { return }
+            summary = current
+        }
+    }
 }
 
 struct AgentStatusMenuBarLabel: View {
-    @ObservedObject var model: LiveViewModel
+    let model: LiveViewModel
     let alerts: LoadAlertCenter
+    @StateObject private var status: AgentMenuStatus
     @Environment(\.openWindow) private var openWindow
 
+    init(model: LiveViewModel, alerts: LoadAlertCenter) {
+        self.model = model
+        self.alerts = alerts
+        _status = StateObject(wrappedValue: AgentMenuStatus(model: model))
+    }
+
     var body: some View {
-        let summary = AgentMenuSummary(activities: model.agentWallTiles.map(\.activity))
-        Image(nsImage: AgentStatusMark.image(for: summary))
-        .renderingMode(.original)
-        .fixedSize(horizontal: true, vertical: false)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(summary.accessibilityLabel)
-        .help(summary.accessibilityLabel)
+        AgentStatusSummaryLabel(summary: status.summary).equatable()
         .onAppear {
             // The menu bar label lives for the whole session, unlike any window.
             alerts.attach(to: model) { openWindow(id: "main") }
             model.start()
         }
     }
+
+}
+
+private struct AgentStatusSummaryLabel: View, Equatable {
+    let summary: AgentMenuSummary
+
+    var body: some View {
+        Image(nsImage: AgentStatusMark.image(for: summary))
+            .renderingMode(.original)
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(summary.accessibilityLabel)
+            .help(summary.accessibilityLabel)
+    }
 }
 
 @MainActor
 private enum AgentStatusMark {
+    private static var previousSummary: AgentMenuSummary?
+    private static var previousImage: NSImage?
+
     static func image(for summary: AgentMenuSummary) -> NSImage {
+        if previousSummary == summary, let previousImage { return previousImage }
         let bodyWidth: CGFloat = 29
         let marksWidth: CGFloat = 21
         let image = NSImage(size: NSSize(width: 33, height: 18), flipped: false) { _ in
@@ -82,6 +124,8 @@ private enum AgentStatusMark {
             return true
         }
         image.isTemplate = false
+        previousSummary = summary
+        previousImage = image
         return image
     }
 }
@@ -157,7 +201,7 @@ struct AgentStatusMenu: View {
                     Button(model.paused ? "Resume monitoring" : "Pause monitoring") { model.paused.toggle() }
                     Button("Check for Updates…") { updates.check() }
                         .disabled(!updates.canCheck || !updates.isIdle)
-                    SettingsLink { Text("Load Alerts…") }
+                    SettingsLink { Text("Performance Alerts…") }
                     Divider()
                     DaddyLaunchAtLoginToggle(login: login)
                     DaddyCompletionNoticeToggle(title: "Notify When Diagnosis Finishes")

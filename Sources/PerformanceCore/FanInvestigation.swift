@@ -189,7 +189,53 @@ public struct FanInvestigation: Equatable, Sendable {
         }
         let change = followup.recordedAverageCores - target.recordedAverageCores
         let systemChange = (current.averageCPUCores ?? 0) - (baseline.averageCPUCores ?? 0)
-        return "\(target.name): \(String(format: "%.2f", target.recordedAverageCores)) → \(String(format: "%.2f", followup.recordedAverageCores)) cores. System CPU \(systemChange < -0.2 ? "fell" : systemChange > 0.2 ? "rose" : "was similar"); peak thermal state \(baseline.peakThermal.rawValue) → \(current.peakThermal.rawValue). \(change < -0.2 && systemChange < -0.2 ? "The workload and system CPU declined together, supporting its contribution to CPU load." : "This pair does not confirm that reducing this workload reduced system load.") Fan improvement remains unmeasured."
+        let hasFanReadings = [before, after].allSatisfy { capture in
+            capture.samples.contains { $0.incident?.hardware?.fans?.contains(where: { $0.rpm != nil }) == true }
+        }
+        let fanNote = hasFanReadings ? "Compare measured RPM separately; fan noise and causality remain unproven." : "Fan improvement remains unmeasured."
+        return "\(target.name): \(String(format: "%.2f", target.recordedAverageCores)) → \(String(format: "%.2f", followup.recordedAverageCores)) cores. System CPU \(systemChange < -0.2 ? "fell" : systemChange > 0.2 ? "rose" : "was similar"); peak thermal state \(baseline.peakThermal.rawValue) → \(current.peakThermal.rawValue). \(change < -0.2 && systemChange < -0.2 ? "The workload and system CPU declined together, supporting its contribution to CPU load." : "This pair does not confirm that reducing this workload reduced system load.") \(fanNote)"
+    }
+
+    /// Compare actual RPM independently of CPU attribution. Matching driver
+    /// labels are the available identity, not authenticated physical fan IDs.
+    public static func compareFanSpeeds(before: DiagnosticCapture, after: DiagnosticCapture) -> String {
+        guard before.duration.isFinite, after.duration.isFinite, before.duration >= 10,
+              abs(before.duration - after.duration) <= 2 else {
+            return "Fan RPM comparison needs equally long recordings of at least ten seconds."
+        }
+        func readings(_ capture: DiagnosticCapture) -> [String: Double] {
+            var seen: Set<Date> = []
+            let samples = capture.samples.filter {
+                $0.timestamp >= capture.startedAt && $0.timestamp <= capture.endedAt && seen.insert($0.timestamp).inserted
+            }.sorted { $0.timestamp < $1.timestamp }
+            let names = Set(samples.flatMap { $0.incident?.hardware?.fans?.map(\.name) ?? [] })
+            var result: [String: Double] = [:]
+            for name in names {
+                let points: [(Date, Double)] = samples.compactMap { sample in
+                    guard let rpm = sample.incident?.hardware?.fans?.first(where: { $0.name == name })?.rpm,
+                          rpm.isFinite, (0...30_000).contains(rpm) else { return nil }
+                    return (sample.timestamp, rpm)
+                }
+                guard points.count >= 3, points.count * 5 >= samples.count * 4,
+                      let first = points.first, let last = points.last,
+                      last.0.timeIntervalSince(first.0) >= capture.duration * 0.8,
+                      zip(points, points.dropFirst()).allSatisfy({ $1.0.timeIntervalSince($0.0) <= 15 }) else { continue }
+                // Time-weight the readings so adaptive intervals do not give a
+                // short burst of dense samples disproportionate influence.
+                let integral = zip(points, points.dropFirst()).reduce(0.0) { value, pair in
+                    value + (pair.0.1 + pair.1.1) / 2 * pair.1.0.timeIntervalSince(pair.0.0)
+                }
+                result[name] = integral / last.0.timeIntervalSince(first.0)
+            }
+            return result
+        }
+        let baseline = readings(before), current = readings(after)
+        let names = Set(baseline.keys).union(current.keys).sorted()
+        guard !names.isEmpty else { return "Comparable fan RPM is unavailable; continuous readings must cover at least 80% of each recording." }
+        return names.map { name in
+            guard let first = baseline[name], let last = current[name] else { return "\(name): comparable RPM unavailable in one recording." }
+            return String(format: "%@: average %.0f → %.0f RPM.", name, first, last)
+        }.joined(separator: " ") + " Matching driver labels only. Fan noise, control ownership and the cause of any change remain unproven."
     }
 
     private static func valid(_ value: Double) -> Bool { value.isFinite && value >= 0 }

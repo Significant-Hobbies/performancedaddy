@@ -5,6 +5,10 @@ enum PerformanceDaddyMain {
     @MainActor
     static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.first == "--agent-hook" {
+            AgentHookCommand.run()
+            return
+        }
         if arguments.first == "--capture-diagnostic" {
             PerformanceDiagnosticCommand.run(arguments: arguments)
         }
@@ -25,23 +29,16 @@ enum PerformanceDaddyMain {
 }
 
 struct PerformanceDaddyApp: App {
-    init() {
-        if CommandLine.arguments.dropFirst().first == "--agent-hook" {
-            AgentHookCommand.run()
-            exit(0)
-        }
-    }
     @NSApplicationDelegateAdaptor(PerformanceDaddyDelegate.self) private var delegate
-    @StateObject private var live = LiveViewModel()
-    @StateObject private var diagnosis = DiagnosisViewModel()
-    @StateObject private var updates = AppUpdates()
-    @StateObject private var alerts = LoadAlertCenter()
-    @StateObject private var login = DaddyLaunchAtLogin()
+    // Surfaces observe these services. The scene only owns their lifetime.
+    @State private var live = LiveViewModel()
+    @State private var diagnosis = DiagnosisViewModel()
+    @State private var updates = AppUpdates()
+    @State private var alerts = LoadAlertCenter()
+    @State private var login = DaddyLaunchAtLogin()
     var body: some Scene {
         Window("PerformanceDaddy", id: "main") {
-            DashboardView(model: diagnosis, live: live)
-                .frame(minWidth: 980, minHeight: 800)
-                .background(MonitoringSurface(model: live))
+            DashboardWindowContent(diagnosis: diagnosis, live: live)
                 .task { if !PerformanceStartupCheck.enabled { updates.start(live: live, diagnosis: diagnosis) } }
                 .onAppear {
                     reviewActiveWorkBeforeQuit()
@@ -73,7 +70,7 @@ struct PerformanceDaddyApp: App {
         }
         .menuBarExtraStyle(.window)
         Settings {
-            LoadAlertSettingsView(alerts: alerts)
+            LoadAlertSettingsView(alerts: alerts, live: live)
         }
     }
 
