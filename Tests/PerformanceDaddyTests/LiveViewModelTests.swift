@@ -218,9 +218,11 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertTrue(model.outcomes[0].signalSent, model.outcomes[0].message)
         XCTAssertNotNil(model.outcomes[0].signalDate)
         XCTAssertTrue(model.lifecycle.events.contains { $0.text.contains("signal sent") })
-        XCTAssertTrue(model.lifecycle.events.contains { $0.text.contains("Exit confirmed") })
+        XCTAssertTrue(model.lifecycle.events.contains { $0.text.contains("Exit confirmed for PID \(observed.id.pid):") })
         XCTAssertTrue(model.outcomeText(model.outcomes[0]).contains("Exit confirmed"))
-        XCTAssertFalse(model.lifecycle.events.contains { $0.text.contains("Matching executable") })
+        XCTAssertEqual(model.outcomes[0].process.id, observed.id)
+        // Other workloads may launch /bin/sleep during this live test. Their
+        // matching-executable observations do not change this child's outcome.
     }
 
     func testMissingSampleDoesNotConfirmExit() {

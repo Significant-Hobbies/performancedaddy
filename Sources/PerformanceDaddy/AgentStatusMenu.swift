@@ -27,17 +27,25 @@ struct AgentStatusMenuBarLabel: View {
 
     var body: some View {
         let summary = AgentMenuSummary(activities: model.agentWallTiles.map(\.activity))
-        Image(nsImage: AgentStatusMark.image(for: summary))
-        .renderingMode(.original)
-        .fixedSize(horizontal: true, vertical: false)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(summary.accessibilityLabel)
-        .help(summary.accessibilityLabel)
+        AgentStatusSummaryLabel(summary: summary).equatable()
         .onAppear {
             // The menu bar label lives for the whole session, unlike any window.
             alerts.attach(to: model) { openWindow(id: "main") }
             model.start()
         }
+    }
+}
+
+private struct AgentStatusSummaryLabel: View, Equatable {
+    let summary: AgentMenuSummary
+
+    var body: some View {
+        Image(nsImage: AgentStatusMark.image(for: summary))
+            .renderingMode(.original)
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(summary.accessibilityLabel)
+            .help(summary.accessibilityLabel)
     }
 }
 
