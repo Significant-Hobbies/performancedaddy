@@ -4,6 +4,16 @@ import XCTest
 
 @MainActor
 final class MonitoringSurfaceTests: XCTestCase {
+    func testSettingsVisibilityDoesNotTurnOnForegroundSampling() {
+        let model = LiveViewModel()
+        let window = FixtureWindow(contentRect: NSRect(x: 0, y: 0, width: 20, height: 20), styleMask: .borderless, backing: .buffered, defer: false)
+        let view = MonitoringSurface.SurfaceView(model: model, tracksSampling: false)
+        window.contentView = view
+        XCTAssertFalse(model.hasVisibleSurface)
+        XCTAssertEqual(model.automaticRefreshInterval, 30)
+        window.contentView = nil
+    }
+
     func testClosedRetainedWindowCanReportOpenAgain() async {
         let model = LiveViewModel()
         var openings: [Bool] = []

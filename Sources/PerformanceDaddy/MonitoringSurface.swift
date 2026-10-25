@@ -5,9 +5,10 @@ import SwiftUI
 /// Application activation alone cannot tell whether another window is visible.
 struct MonitoringSurface: NSViewRepresentable {
     let model: LiveViewModel
+    var tracksSampling = true
     var onWindowOpen: ((Bool) -> Void)? = nil
 
-    func makeNSView(context: Context) -> SurfaceView { SurfaceView(model: model, onWindowOpen: onWindowOpen) }
+    func makeNSView(context: Context) -> SurfaceView { SurfaceView(model: model, tracksSampling: tracksSampling, onWindowOpen: onWindowOpen) }
     func updateNSView(_ nsView: SurfaceView, context: Context) { nsView.onWindowOpen = onWindowOpen }
     static func dismantleNSView(_ nsView: SurfaceView, coordinator: ()) { nsView.detach() }
 
@@ -17,9 +18,11 @@ struct MonitoringSurface: NSViewRepresentable {
         private var observers: [NSObjectProtocol] = []
         var onWindowOpen: ((Bool) -> Void)?
         private var lastOpen: Bool?
+        private let tracksSampling: Bool
 
-        init(model: LiveViewModel, onWindowOpen: ((Bool) -> Void)? = nil) {
+        init(model: LiveViewModel, tracksSampling: Bool = true, onWindowOpen: ((Bool) -> Void)? = nil) {
             self.model = model
+            self.tracksSampling = tracksSampling
             self.onWindowOpen = onWindowOpen
             super.init(frame: .zero)
         }
@@ -37,7 +40,7 @@ struct MonitoringSurface: NSViewRepresentable {
                         if closing {
                             guard let self else { return }
                             self.reportOpen(false)
-                            self.model?.setSurfaceVisible(self.id, visible: false)
+                            if self.tracksSampling { self.model?.setSurfaceVisible(self.id, visible: false) }
                         }
                         else { self?.reportVisibility() }
                     }
@@ -48,7 +51,7 @@ struct MonitoringSurface: NSViewRepresentable {
 
         private func reportVisibility() {
             let visible = window.map { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) } ?? false
-            model?.setSurfaceVisible(id, visible: visible)
+            if tracksSampling { model?.setSurfaceVisible(id, visible: visible) }
             // Occlusion should slow sampling, but only closing the actual
             // window releases the dashboard. Preserve state while minimized.
             if window?.isMiniaturized != true { reportOpen(window?.isVisible == true) }
@@ -68,7 +71,7 @@ struct MonitoringSurface: NSViewRepresentable {
         func detach() {
             observers.forEach { NotificationCenter.default.removeObserver($0) }
             observers.removeAll()
-            model?.setSurfaceVisible(id, visible: false)
+            if tracksSampling { model?.setSurfaceVisible(id, visible: false) }
         }
     }
 }

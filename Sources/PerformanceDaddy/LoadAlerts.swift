@@ -332,29 +332,45 @@ extension LoadAlertCenter: UNUserNotificationCenterDelegate {
 
 struct LoadAlertSettingsView: View {
     @ObservedObject var alerts: LoadAlertCenter
-    @ObservedObject var live: LiveViewModel
+    let live: LiveViewModel
     @State private var workloadSearch = ""
+    @State private var selectedTab = 0
+    @State private var windowOpen = true
+    @State private var availableWorkloads: [LoadContributor] = []
+    @State private var monitoringStatus = ""
+    @State private var isPaused = false
 
     var body: some View {
-        TabView {
-            rules.tabItem { Label("Alerts", systemImage: "bell") }
-            workloads.tabItem { Label("Workload limits", systemImage: "app.badge") }
-            activity.tabItem { Label("Recent alerts", systemImage: "clock") }
+        TabView(selection: $selectedTab) {
+            rules.tabItem { Label("Alerts", systemImage: "bell") }.tag(0)
+            workloads.tabItem { Label("Workload limits", systemImage: "app.badge") }.tag(1)
+            activity.tabItem { Label("Recent alerts", systemImage: "clock") }.tag(2)
         }
         .padding(12)
         .frame(width: 600, height: 700)
-        .onAppear { alerts.refreshAuthorization() }
+        .background(MonitoringSurface(model: live, tracksSampling: false, onWindowOpen: { open in
+            windowOpen = open
+            if open { isPaused = live.paused; updateStatus(); if selectedTab == 1 { updateWorkloads(from: live.snapshot) } }
+            else { availableWorkloads.removeAll() }
+        }))
+        .onAppear { alerts.refreshAuthorization(); isPaused = live.paused; updateStatus() }
+        .onChange(of: selectedTab) { _, tab in if tab == 1 { updateWorkloads(from: live.snapshot) } }
+        .onReceive(live.$snapshot) { snapshot in
+            guard windowOpen else { return }
+            updateStatus()
+            if selectedTab == 1 { updateWorkloads(from: snapshot) }
+        }
+        .onReceive(live.$paused.removeDuplicates()) { paused in if windowOpen { isPaused = paused } }
     }
 
     private var rules: some View {
         Form {
             Section {
                 Toggle("Notify me about sustained performance problems", isOn: $alerts.enabled)
-                if live.paused {
+                if isPaused {
                     Label("Monitoring is paused. Resume from the menu or main window.", systemImage: "pause.circle")
                 } else {
-                    Text(live.hasVisibleSurface ? "Watching live while a diagnostic window is visible." : "Watching in the background. Healthy captures are 30 seconds apart; sustained signals get a closer look.")
-                        .foregroundStyle(.secondary)
+                    Text(monitoringStatus).foregroundStyle(.secondary)
                 }
                 if let until = alerts.snoozedUntil, until > Date() {
                     HStack {
@@ -478,10 +494,19 @@ struct LoadAlertSettingsView: View {
     }
 
     private var runningWorkloads: [LoadContributor] {
+        Array(availableWorkloads.filter { workloadSearch.isEmpty || $0.name.localizedCaseInsensitiveContains(workloadSearch) }.prefix(80))
+    }
+
+    private func updateWorkloads(from snapshot: LiveSnapshot?) {
         var seen: Set<String> = []
-        return Array(LoadContributors.group(live.snapshot?.processes ?? [])
-            .filter { (workloadSearch.isEmpty || $0.name.localizedCaseInsensitiveContains(workloadSearch)) && seen.insert($0.ignoreKey).inserted }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }.prefix(80))
+        availableWorkloads = LoadContributors.group(snapshot?.processes ?? [])
+            .filter { seen.insert($0.ignoreKey).inserted }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    private func updateStatus() {
+        monitoringStatus = live.hasVisibleSurface ? "Watching live while a diagnostic window is visible." :
+            "Watching in the background. Healthy captures are 30 seconds apart; sustained signals get a closer look."
     }
 
     private var activity: some View {

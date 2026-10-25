@@ -2,7 +2,7 @@ import AppKit
 import PerformanceCore
 import SwiftUI
 
-struct AgentMenuSummary {
+struct AgentMenuSummary: Equatable {
     let working: Int
     let attention: Int
     let failed: Int
@@ -43,7 +43,11 @@ struct AgentStatusMenuBarLabel: View {
 
 @MainActor
 private enum AgentStatusMark {
+    private static var previousSummary: AgentMenuSummary?
+    private static var previousImage: NSImage?
+
     static func image(for summary: AgentMenuSummary) -> NSImage {
+        if previousSummary == summary, let previousImage { return previousImage }
         let bodyWidth: CGFloat = 29
         let marksWidth: CGFloat = 21
         let image = NSImage(size: NSSize(width: 33, height: 18), flipped: false) { _ in
@@ -82,6 +86,8 @@ private enum AgentStatusMark {
             return true
         }
         image.isTemplate = false
+        previousSummary = summary
+        previousImage = image
         return image
     }
 }
