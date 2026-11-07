@@ -3,6 +3,13 @@ import Combine
 import PerformanceCore
 import UniformTypeIdentifiers
 
+protocol LiveWorkloadSampling: Sendable {
+    func resetMeasurementWindow() async
+    func sample(includePorts: Bool) async -> LiveSnapshot
+}
+
+extension WorkloadSampler: LiveWorkloadSampling {}
+
 enum LivePage: String, CaseIterable, Identifiable {
     case workloads = "Processes", ports = "Ports", agents = "Agent sessions", memory = "Memory"
     var id: Self { self }
@@ -91,7 +98,7 @@ final class LiveViewModel: ObservableObject {
         didSet { rowCache.removeValue(forKey: .agents) }
     }
     private var lastAgentActivities: [ProcessIdentity: AgentWallActivity] = [:]
-    private let sampler = WorkloadSampler()
+    private let sampler: any LiveWorkloadSampling
     private var task: Task<Void, Never>?
     private var agentPresenceTask: Task<Void, Never>?
     private var visibleSurfaces: Set<UUID> = []
@@ -156,8 +163,10 @@ final class LiveViewModel: ObservableObject {
     var measurementResetObserver: (() -> Void)?
     private var agentSignalObserver: NSObjectProtocol?
 
-    init(lifecycleStore: LifecycleHistoryStore = LifecycleHistoryStore()) {
+    init(lifecycleStore: LifecycleHistoryStore = LifecycleHistoryStore(),
+         sampler: any LiveWorkloadSampling = WorkloadSampler()) {
         self.lifecycleStore = lifecycleStore
+        self.sampler = sampler
     }
 
     func start() {
@@ -314,27 +323,47 @@ final class LiveViewModel: ObservableObject {
 
     func refresh(background: Bool = false) async {
         guard !refreshing else { return }
+        let generation = measurementGeneration
+        let resetRequested = needsNewMeasurementWindow
         refreshing = true
-        if needsNewMeasurementWindow {
-            needsNewMeasurementWindow = false
-            processHistory.reset()
-            evidenceBuilder.reset()
+        defer { refreshing = false }
+        if resetRequested {
             await sampler.resetMeasurementWindow()
+            guard generation == measurementGeneration else { return }
         }
         let result = await sampler.sample(includePorts: inspectPorts && !background)
-        refreshForegroundContext()
-        let generation = measurementGeneration
-        let target = probeTarget(in: result)
+        guard generation == measurementGeneration else { return }
+
+        let foregroundApp = NSWorkspace.shared.frontmostApplication
+        let observedForeground = foregroundEvidence(for: foregroundApp)
+        let foreground = observedForeground ?? lastExternalApp
+        let foregroundPID = observedForeground == nil ? lastExternalPID : foregroundApp?.processIdentifier
+        let target = probeTarget(in: result, foreground: foreground, pid: foregroundPID)
         let appProbe = await appResponseReader.sample(target: target, enabled: appResponseEnabled && !paused && (!background || capturingIncident))
-        refreshForegroundContext()
-        appResponsePermissionAvailable = AppProbePermission.available
-        let previousEventCount = lifecycle.events.count
-        lifecycle.observe(result.processes, at: result.date)
-        let checks = Set(lifecycle.pendingExitChecks + outcomes.filter(\.signalSent).map { $0.process.id }).subtracting(confirmedExits)
+        guard generation == measurementGeneration else { return }
+
+        var projectedLifecycle = lifecycle
+        projectedLifecycle.observe(result.processes, at: result.date)
+        let checks = Set(projectedLifecycle.pendingExitChecks + outcomes.filter(\.signalSent).map { $0.process.id }).subtracting(confirmedExits)
         let gone = await Task.detached(priority: .utility) {
             checks.filter { ProcessPresence.inspect($0) == .gone }
         }.value
+        guard generation == measurementGeneration else { return }
+
         let checkedAt = Date()
+        // A frontmost-app change during either probe must not attribute the
+        // response measurement to the old application.
+        let currentApp = NSWorkspace.shared.frontmostApplication
+        let currentPID = currentApp.flatMap { $0.processIdentifier == getpid() ? nil : $0.processIdentifier } ?? lastExternalPID
+        let probeStillMatchesForeground = target?.identity.pid == currentPID
+        refreshForegroundContext()
+        if resetRequested {
+            processHistory.reset()
+            evidenceBuilder.reset()
+            needsNewMeasurementWindow = false
+        }
+        let previousEventCount = lifecycle.events.count
+        lifecycle.observe(result.processes, at: result.date)
         for identity in gone { lifecycle.confirmExit(identity, presence: .gone, at: checkedAt) }
         confirmedExits.formUnion(gone)
         confirmedExits.formIntersection(Set(lifecycle.pendingExitChecks + outcomes.map { $0.process.id }))
@@ -358,14 +387,14 @@ final class LiveViewModel: ObservableObject {
             memoryHistory.append(MemoryPoint(date: result.date, used: 1 - headroom))
             memoryHistory.removeAll { $0.date < result.date.addingTimeInterval(-300) }
         }
-        refreshing = false
         if lifecycle.events.count != previousEventCount { persistLifecycle() }
         var evidence = evidenceBuilder.sample(result, foreground: lastExternalApp)
-        if generation == measurementGeneration && target?.identity.pid == lastExternalPID {
+        if probeStillMatchesForeground && target?.identity.pid == lastExternalPID {
             evidence = evidence.withResponsiveness(heartbeat.drain(appProbe: appProbe))
         } else {
             evidence = evidence.withResponsiveness(heartbeat.drain(appProbe: nil))
         }
+        appResponsePermissionAvailable = AppProbePermission.available
         incidentBuffer.append(evidence)
         latestEvidence = evidence
         recentEvidenceCount = incidentBuffer.samples.count
@@ -392,14 +421,19 @@ final class LiveViewModel: ObservableObject {
         }
     }
 
-    private func probeTarget(in snapshot: LiveSnapshot) -> AppProbeTarget? {
-        guard let pid = lastExternalPID, let context = lastExternalApp,
+    private func probeTarget(in snapshot: LiveSnapshot, foreground context: ForegroundEvidence?, pid: Int32?) -> AppProbeTarget? {
+        guard let pid, let context,
               Date().timeIntervalSince(context.observedAt) < 300,
               let process = snapshot.processes.first(where: { $0.id.pid == pid }),
               let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated,
               app.bundleIdentifier == context.bundleID else { return nil }
         let version = app.bundleURL.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String }
         return AppProbeTarget(identity: process.id, name: context.name, bundleID: context.bundleID, version: version)
+    }
+
+    private func foregroundEvidence(for app: NSRunningApplication?) -> ForegroundEvidence? {
+        guard let app, app.processIdentifier != getpid(), let name = app.localizedName else { return nil }
+        return ForegroundEvidence(name: name, bundleID: app.bundleIdentifier, observedAt: Date())
     }
 
     private func refreshForegroundContext() {

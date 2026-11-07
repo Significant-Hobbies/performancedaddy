@@ -263,32 +263,75 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertNil(model.snapshot?.system.usedCPUCores)
     }
 
-    func testPauseDiscardsSampleAlreadyInFlight() async {
-        let model = LiveViewModel()
+    func testPauseDiscardsSampleAlreadyInFlightAndNextWindowPublishes() async {
+        let own = process(51, name: "codex", cpu: 1)
+        let sampler = GatedLiveWorkloadSampler(snapshot: snapshot([own]))
+        let model = LiveViewModel(sampler: sampler)
+        var observedSamples = 0
+        model.sampleObserver = { _ in observedSamples += 1 }
+        await model.refresh()
+        await model.refresh()
+        XCTAssertNotNil(model.memoryTrend(for: own))
+        XCTAssertEqual(model.recentEvidenceCount, 2)
+        XCTAssertEqual(model.latestEvidence?.incident?.newlyObservedProcesses, 0)
         let refresh = Task { await model.refresh() }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while !model.refreshing && ContinuousClock.now < deadline { await Task.yield() }
-        XCTAssertTrue(model.refreshing)
+        await sampler.waitUntilGatedSampleStarted()
         model.paused = true
+        await sampler.releaseGatedSample()
         await refresh.value
-        XCTAssertTrue(model.snapshot == nil, "An in-flight sample must not publish after Pause")
-        XCTAssertTrue(model.latestEvidence == nil, "Paused evidence must not advance")
-        XCTAssertEqual(model.recentEvidenceCount, 0)
+        XCTAssertEqual(model.snapshot?.processes.first?.id, own.id, "An in-flight sample must not replace the last snapshot after Pause")
+        XCTAssertEqual(model.recentEvidenceCount, 2, "Paused evidence must not advance")
+        XCTAssertNotNil(model.memoryTrend(for: own), "A stale sample must not reset or extend process history")
+        XCTAssertTrue(model.lifecycle.events.isEmpty, "A stale sample must not mutate lifecycle")
+        XCTAssertEqual(observedSamples, 2, "A stale sample must not reach observers")
         XCTAssertFalse(model.refreshing)
+
+        model.paused = false
+        await model.refresh()
+        XCTAssertNotNil(model.snapshot, "The next current-window sample should publish")
+        XCTAssertNotNil(model.latestEvidence)
+        XCTAssertEqual(observedSamples, 3)
+        XCTAssertEqual(model.recentEvidenceCount, 3, "Only accepted samples should enter incident history")
+        XCTAssertEqual(model.latestEvidence?.incident?.newlyObservedProcesses, 0,
+                       "A successful new window starts snapshot evidence with unknown prior identities")
+        XCTAssertNil(model.memoryTrend(for: own), "A successful new window starts fresh process history")
+        let resetCount = await sampler.resetCount
+        XCTAssertEqual(resetCount, 1, "The new measurement window must reset before sampling")
     }
 
-    func testWakeDiscardsSampleFromPreviousMeasurementWindow() async {
-        let model = LiveViewModel()
+    func testWakeDiscardsSampleFromPreviousMeasurementWindowAndNextWindowPublishes() async {
+        let own = process(52, name: "claude", cpu: 2)
+        let sampler = GatedLiveWorkloadSampler(snapshot: snapshot([own]))
+        let model = LiveViewModel(sampler: sampler)
+        var observedSamples = 0
+        model.sampleObserver = { _ in observedSamples += 1 }
+        await model.refresh()
+        await model.refresh()
+        XCTAssertNotNil(model.memoryTrend(for: own))
+        XCTAssertEqual(model.recentEvidenceCount, 2)
+        XCTAssertEqual(model.latestEvidence?.incident?.newlyObservedProcesses, 0)
         let refresh = Task { await model.refresh() }
-        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
-        while !model.refreshing && ContinuousClock.now < deadline { await Task.yield() }
-        XCTAssertTrue(model.refreshing)
+        await sampler.waitUntilGatedSampleStarted()
         model.handleSystemWake()
+        await sampler.releaseGatedSample()
         await refresh.value
-        XCTAssertTrue(model.snapshot == nil, "A pre-wake sample must not enter the new measurement window")
-        XCTAssertTrue(model.latestEvidence == nil, "Pre-wake evidence must not advance")
-        XCTAssertEqual(model.recentEvidenceCount, 0)
+        XCTAssertEqual(model.snapshot?.processes.first?.id, own.id, "A pre-wake sample must not replace the current snapshot")
+        XCTAssertEqual(model.recentEvidenceCount, 2, "Pre-wake evidence must not advance")
+        XCTAssertNotNil(model.memoryTrend(for: own), "A stale sample must not reset or extend process history")
+        XCTAssertTrue(model.lifecycle.events.isEmpty, "A stale sample must not mutate lifecycle")
+        XCTAssertEqual(observedSamples, 2, "A stale sample must not reach observers")
         XCTAssertFalse(model.refreshing)
+
+        await model.refresh()
+        XCTAssertNotNil(model.snapshot, "The next current-window sample should publish")
+        XCTAssertNotNil(model.latestEvidence)
+        XCTAssertEqual(observedSamples, 3)
+        XCTAssertEqual(model.recentEvidenceCount, 3, "Only accepted samples should enter incident history")
+        XCTAssertEqual(model.latestEvidence?.incident?.newlyObservedProcesses, 0,
+                       "A successful new window starts snapshot evidence with unknown prior identities")
+        XCTAssertNil(model.memoryTrend(for: own), "A successful new window starts fresh process history")
+        let resetCount = await sampler.resetCount
+        XCTAssertEqual(resetCount, 1, "The new measurement window must reset before sampling")
     }
 
     func testCachedRowsInvalidateOnSearchSortAndSnapshot() {
@@ -689,5 +732,54 @@ final class LiveViewModelTests: XCTestCase {
             system: .init(timestamp: date, usedCPUCores: 1, memoryHeadroomRatio: headroom,
                           swapUsedBytes: 0, diskFreeBytes: nil, thermal: .nominal, processes: []),
             pressure: "Normal", compressed: nil, unavailableProcesses: 0, portsDate: date, scanSeconds: scanSeconds)
+    }
+}
+
+private actor GatedLiveWorkloadSampler: LiveWorkloadSampling {
+    private let value: LiveSnapshot
+    private var gatedSampleStarted = false
+    private var gatedSampleWaiter: CheckedContinuation<Void, Never>?
+    private var gatedSampleRelease: CheckedContinuation<Void, Never>?
+    private(set) var resetCount = 0
+    private var sampleCount = 0
+
+    init(snapshot: LiveSnapshot) { value = snapshot }
+
+    func resetMeasurementWindow() async { resetCount += 1 }
+
+    func sample(includePorts: Bool) async -> LiveSnapshot {
+        sampleCount += 1
+        if sampleCount == 3 {
+            gatedSampleStarted = true
+            gatedSampleWaiter?.resume()
+            gatedSampleWaiter = nil
+            await withCheckedContinuation { gatedSampleRelease = $0 }
+        }
+        let date = Date()
+        let system = SystemSample(timestamp: date, usedCPUCores: value.system.usedCPUCores,
+                                  memoryHeadroomRatio: value.system.memoryHeadroomRatio,
+                                  swapUsedBytes: value.system.swapUsedBytes, diskFreeBytes: value.system.diskFreeBytes,
+                                  thermal: value.system.thermal, processes: value.system.processes,
+                                  samplerCPUCores: value.system.samplerCPUCores, memory: value.system.memory,
+                                  power: value.system.power, workloads: value.system.workloads,
+                                  incident: value.system.incident, responsiveness: value.system.responsiveness)
+        let processes = sampleCount >= 4
+            ? value.processes + [LiveProcess(id: .init(pid: 53, started: 10), parent: 1, uid: getuid(),
+                                             name: "newcomer", executable: "/opt/bin/newcomer", directory: "/tmp",
+                                             cpu: 1, memory: 1_024)]
+            : value.processes
+        return LiveSnapshot(date: date, processes: processes, system: system, pressure: value.pressure,
+                            compressed: value.compressed, unavailableProcesses: value.unavailableProcesses,
+                            portsDate: value.portsDate, scanSeconds: value.scanSeconds, hardware: value.hardware)
+    }
+
+    func waitUntilGatedSampleStarted() async {
+        guard !gatedSampleStarted else { return }
+        await withCheckedContinuation { gatedSampleWaiter = $0 }
+    }
+
+    func releaseGatedSample() {
+        gatedSampleRelease?.resume()
+        gatedSampleRelease = nil
     }
 }
