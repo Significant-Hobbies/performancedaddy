@@ -854,6 +854,9 @@ final class LiveViewModel: ObservableObject {
     func outcomeText(_ result: StopResult) -> String {
         guard result.signalSent else { return result.message }
         if confirmedExits.contains(result.process.id) { return "Exit confirmed; original process identity is gone" }
+        if let signalDate = result.signalDate, (snapshot?.date ?? .distantPast) <= signalDate {
+            return "Signal sent; exit not yet checked"
+        }
         let live = snapshot?.processes.contains { $0.id == result.process.id } ?? false
         return live ? "Signal sent; process still observed" : "Signal sent; exit not confirmed (inspection unavailable)"
     }

@@ -390,12 +390,15 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(model.lifecycle.events.count, 1, "The discarded absence must not append lifecycle events or erase the stop record")
         XCTAssertTrue(model.lifecycle.events[0].text.contains("Stop signal sent to PID \(pid)"))
         XCTAssertFalse(model.lifecycle.events.contains { $0.text.contains("no longer observed") || $0.text.contains("Exit confirmed") })
+        let outcome = try XCTUnwrap(model.outcomes.first)
+        XCTAssertEqual(model.outcomeText(outcome), "Signal sent; exit not yet checked")
 
         model.paused = false
         await model.refresh()
         XCTAssertTrue(model.lifecycle.events.contains { $0.text.contains("PID \(pid) no longer observed") })
         XCTAssertTrue(model.lifecycle.events.contains { $0.text.contains("Exit confirmed for PID \(pid):") })
         XCTAssertTrue(model.outcomes.first?.signalSent == true)
+        XCTAssertTrue(model.outcomeText(outcome).contains("Exit confirmed"))
         await model.waitForLifecyclePersistence()
     }
 
