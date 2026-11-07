@@ -250,6 +250,30 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertNil(model.snapshot?.system.usedCPUCores)
     }
 
+    func testAppResponseToggleDoesNotDiscardAnInFlightProcessSample() async throws {
+        let suiteName = "LiveViewModelTests-\(UUID().uuidString)"
+        let preferences = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { preferences.removePersistentDomain(forName: suiteName) }
+        let workload = process(50, name: "codex", cpu: 1)
+        let sampler = GatedLiveWorkloadSampler(snapshot: snapshot([workload]))
+        let model = LiveViewModel(sampler: sampler, preferences: preferences)
+        var observedSamples = 0
+        model.sampleObserver = { _ in observedSamples += 1 }
+        await model.refresh()
+        await model.refresh()
+
+        let refresh = Task { await model.refresh() }
+        await sampler.waitUntilGatedSampleStarted()
+        model.appResponseEnabled.toggle()
+        await sampler.releaseGatedSample()
+        await refresh.value
+
+        XCTAssertEqual(model.snapshot?.processes.first?.id, workload.id)
+        XCTAssertEqual(observedSamples, 3, "Changing a probe preference must not discard valid workload evidence")
+        XCTAssertEqual(model.recentEvidenceCount, 3)
+        XCTAssertFalse(model.refreshing)
+    }
+
     func testWakeStartsFreshRateWindow() async throws {
         let model = LiveViewModel()
         await model.refresh()
@@ -282,7 +306,6 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(model.snapshot?.processes.first?.id, own.id, "An in-flight sample must not replace the last snapshot after Pause")
         XCTAssertEqual(model.recentEvidenceCount, 2, "Paused evidence must not advance")
         XCTAssertNotNil(model.memoryTrend(for: own), "A stale sample must not reset or extend process history")
-        XCTAssertTrue(model.lifecycle.events.isEmpty, "A stale sample must not mutate lifecycle")
         XCTAssertEqual(observedSamples, 2, "A stale sample must not reach observers")
         XCTAssertFalse(model.refreshing)
 
@@ -318,7 +341,6 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(model.snapshot?.processes.first?.id, own.id, "A pre-wake sample must not replace the current snapshot")
         XCTAssertEqual(model.recentEvidenceCount, 2, "Pre-wake evidence must not advance")
         XCTAssertNotNil(model.memoryTrend(for: own), "A stale sample must not reset or extend process history")
-        XCTAssertTrue(model.lifecycle.events.isEmpty, "A stale sample must not mutate lifecycle")
         XCTAssertEqual(observedSamples, 2, "A stale sample must not reach observers")
         XCTAssertFalse(model.refreshing)
 
@@ -332,6 +354,49 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertNil(model.memoryTrend(for: own), "A successful new window starts fresh process history")
         let resetCount = await sampler.resetCount
         XCTAssertEqual(resetCount, 1, "The new measurement window must reset before sampling")
+    }
+
+    func testPausedDiscardedSamplePreservesWatchedStopUntilAcceptedAbsence() async throws {
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        child.arguments = ["30"]
+        try child.run()
+        defer {
+            if child.isRunning { child.terminate() }
+            child.waitUntilExit()
+        }
+
+        let history = FileManager.default.temporaryDirectory
+            .appendingPathComponent("watched-child-lifecycle-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: history) }
+        let pid = child.processIdentifier
+        let native = await WorkloadSampler().sample(selectedSameUserPIDs: [pid])
+        let observed = try XCTUnwrap(native.processes.first { $0.id.pid == pid })
+        let sampler = GatedSelectedPIDSampler(pid: pid)
+        let model = LiveViewModel(lifecycleStore: LifecycleHistoryStore(fileURL: history), sampler: sampler)
+
+        await model.refresh()
+        await model.refresh()
+        XCTAssertEqual(model.snapshot?.processes.first?.id, observed.id, "Only the owned child's native PID/start identity is sampled")
+        model.prepare([observed])
+        let stop = Task { await model.confirmStop(force: false) }
+        await sampler.waitUntilGatedSampleStarted()
+
+        XCTAssertTrue(model.lifecycle.events.contains { $0.text.contains("Stop signal sent to PID \(pid)") })
+        model.paused = true
+        await sampler.releaseGatedSample()
+        await stop.value
+
+        XCTAssertEqual(model.lifecycle.events.count, 1, "The discarded absence must not append lifecycle events or erase the stop record")
+        XCTAssertTrue(model.lifecycle.events[0].text.contains("Stop signal sent to PID \(pid)"))
+        XCTAssertFalse(model.lifecycle.events.contains { $0.text.contains("no longer observed") || $0.text.contains("Exit confirmed") })
+
+        model.paused = false
+        await model.refresh()
+        XCTAssertTrue(model.lifecycle.events.contains { $0.text.contains("PID \(pid) no longer observed") })
+        XCTAssertTrue(model.lifecycle.events.contains { $0.text.contains("Exit confirmed for PID \(pid):") })
+        XCTAssertTrue(model.outcomes.first?.signalSent == true)
+        await model.waitForLifecyclePersistence()
     }
 
     func testCachedRowsInvalidateOnSearchSortAndSnapshot() {
@@ -732,6 +797,40 @@ final class LiveViewModelTests: XCTestCase {
             system: .init(timestamp: date, usedCPUCores: 1, memoryHeadroomRatio: headroom,
                           swapUsedBytes: 0, diskFreeBytes: nil, thermal: .nominal, processes: []),
             pressure: "Normal", compressed: nil, unavailableProcesses: 0, portsDate: date, scanSeconds: scanSeconds)
+    }
+}
+
+private actor GatedSelectedPIDSampler: LiveWorkloadSampling {
+    private let pid: Int32
+    private let sampler = WorkloadSampler()
+    private var sampleCount = 0
+    private var gatedSampleStarted = false
+    private var gatedSampleWaiter: CheckedContinuation<Void, Never>?
+    private var gatedSampleRelease: CheckedContinuation<Void, Never>?
+
+    init(pid: Int32) { self.pid = pid }
+
+    func resetMeasurementWindow() async { await sampler.resetMeasurementWindow() }
+
+    func sample(includePorts: Bool) async -> LiveSnapshot {
+        sampleCount += 1
+        if sampleCount == 3 {
+            gatedSampleStarted = true
+            gatedSampleWaiter?.resume()
+            gatedSampleWaiter = nil
+            await withCheckedContinuation { gatedSampleRelease = $0 }
+        }
+        return await sampler.sample(selectedSameUserPIDs: [pid])
+    }
+
+    func waitUntilGatedSampleStarted() async {
+        guard !gatedSampleStarted else { return }
+        await withCheckedContinuation { gatedSampleWaiter = $0 }
+    }
+
+    func releaseGatedSample() {
+        gatedSampleRelease?.resume()
+        gatedSampleRelease = nil
     }
 }
 

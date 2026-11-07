@@ -116,15 +116,17 @@ final class LiveViewModel: ObservableObject {
     @Published var inspectPorts = false
     private(set) var lastExternalApp: ForegroundEvidence?
     private var lastExternalPID: Int32?
-    @Published var appResponseEnabled = UserDefaults.standard.bool(forKey: "appResponseProbeEnabled") { didSet {
-        UserDefaults.standard.set(appResponseEnabled, forKey: "appResponseProbeEnabled")
-        measurementGeneration = UUID()
+    @Published var appResponseEnabled = false { didSet {
+        preferences.set(appResponseEnabled, forKey: "appResponseProbeEnabled")
+        appResponseGeneration = UUID()
     } }
     @Published private(set) var appResponsePermissionAvailable = AppProbePermission.available
     private let heartbeat = MainQueueHeartbeat()
     private let appResponseReader = AppResponseReader()
+    private let preferences: UserDefaults
     private var localEventMonitor: Any?
     private var measurementGeneration = UUID()
+    private var appResponseGeneration = UUID()
     private var foregroundObserver: NSObjectProtocol?
     private var evidenceBuilder = SnapshotEvidenceBuilder()
     private var incidentBuffer = IncidentBuffer()
@@ -164,9 +166,12 @@ final class LiveViewModel: ObservableObject {
     private var agentSignalObserver: NSObjectProtocol?
 
     init(lifecycleStore: LifecycleHistoryStore = LifecycleHistoryStore(),
-         sampler: any LiveWorkloadSampling = WorkloadSampler()) {
+         sampler: any LiveWorkloadSampling = WorkloadSampler(),
+         preferences: UserDefaults = .standard) {
         self.lifecycleStore = lifecycleStore
         self.sampler = sampler
+        self.preferences = preferences
+        self.appResponseEnabled = preferences.bool(forKey: "appResponseProbeEnabled")
     }
 
     func start() {
@@ -339,6 +344,7 @@ final class LiveViewModel: ObservableObject {
         let foreground = observedForeground ?? lastExternalApp
         let foregroundPID = observedForeground == nil ? lastExternalPID : foregroundApp?.processIdentifier
         let target = probeTarget(in: result, foreground: foreground, pid: foregroundPID)
+        let probeGeneration = appResponseGeneration
         let appProbe = await appResponseReader.sample(target: target, enabled: appResponseEnabled && !paused && (!background || capturingIncident))
         guard generation == measurementGeneration else { return }
 
@@ -389,7 +395,7 @@ final class LiveViewModel: ObservableObject {
         }
         if lifecycle.events.count != previousEventCount { persistLifecycle() }
         var evidence = evidenceBuilder.sample(result, foreground: lastExternalApp)
-        if probeStillMatchesForeground && target?.identity.pid == lastExternalPID {
+        if probeStillMatchesForeground && target?.identity.pid == lastExternalPID && probeGeneration == appResponseGeneration {
             evidence = evidence.withResponsiveness(heartbeat.drain(appProbe: appProbe))
         } else {
             evidence = evidence.withResponsiveness(heartbeat.drain(appProbe: nil))
