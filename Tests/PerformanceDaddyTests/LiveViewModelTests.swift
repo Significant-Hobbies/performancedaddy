@@ -263,6 +263,34 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertNil(model.snapshot?.system.usedCPUCores)
     }
 
+    func testPauseDiscardsSampleAlreadyInFlight() async {
+        let model = LiveViewModel()
+        let refresh = Task { await model.refresh() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !model.refreshing && ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertTrue(model.refreshing)
+        model.paused = true
+        await refresh.value
+        XCTAssertTrue(model.snapshot == nil, "An in-flight sample must not publish after Pause")
+        XCTAssertTrue(model.latestEvidence == nil, "Paused evidence must not advance")
+        XCTAssertEqual(model.recentEvidenceCount, 0)
+        XCTAssertFalse(model.refreshing)
+    }
+
+    func testWakeDiscardsSampleFromPreviousMeasurementWindow() async {
+        let model = LiveViewModel()
+        let refresh = Task { await model.refresh() }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while !model.refreshing && ContinuousClock.now < deadline { await Task.yield() }
+        XCTAssertTrue(model.refreshing)
+        model.handleSystemWake()
+        await refresh.value
+        XCTAssertTrue(model.snapshot == nil, "A pre-wake sample must not enter the new measurement window")
+        XCTAssertTrue(model.latestEvidence == nil, "Pre-wake evidence must not advance")
+        XCTAssertEqual(model.recentEvidenceCount, 0)
+        XCTAssertFalse(model.refreshing)
+    }
+
     func testCachedRowsInvalidateOnSearchSortAndSnapshot() {
         let model = LiveViewModel()
         model.includeSystem = true
