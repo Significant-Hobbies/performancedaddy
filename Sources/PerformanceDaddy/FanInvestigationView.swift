@@ -9,6 +9,7 @@ struct FanInvestigationView: View {
     var onInspect: ((LoadContributor) -> Void)? = nil
 
     var body: some View {
+        GeometryReader { geometry in
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 SMEyebrow("fans & heat").accessibilityLabel("FANS & HEAT")
@@ -28,9 +29,10 @@ struct FanInvestigationView: View {
                     Text(error).font(.caption).foregroundStyle(PerformanceTheme.amber)
                 }
             }
-            .padding(32)
-            .frame(maxWidth: 1_050, alignment: .leading)
+            .padding(28)
+            .frame(width: min(1_040, geometry.size.width), alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
         }
         .foregroundStyle(PerformanceTheme.ink)
         .onAppear {
@@ -81,6 +83,7 @@ struct FanInvestigationView: View {
                 .buttonStyle(SMButtonStyle(.brand, size: .compact))
             Text("Local and read-only. Nothing stops automatically. Two minutes gives more context than a quick check.")
                 .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -183,6 +186,7 @@ struct FanInvestigationView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Fan noise is your observation. Available RPM, sensor and GPU driver readings are shown separately. Thermal state alone does not establish fan speed or the source of heat.")
                 .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
