@@ -173,8 +173,7 @@ final class PublishedAppUITests: XCTestCase {
                 .firstMatch.waitForExistence(timeout: 10), page)
             try editSearch(app.textFields["Search processes, projects and ports"], window: window)
             for title in ["Resume", "Refresh processes", "Help with processes and measurements", "Stop…"] {
-                try reachable(app.descendants(matching: .any).matching(identifier: title).firstMatch,
-                              window: window)
+                try reachable(control(title), window: window)
             }
             try capture(page)
         }
@@ -185,17 +184,17 @@ final class PublishedAppUITests: XCTestCase {
         try capture("Fans & heat")
         try open("App access", window: window)
         try editSearch(app.textFields["Search app access audit"], window: window)
-        try reachable(app.buttons["Review Login Items"], window: window)
-        try reachable(app.buttons["Refresh audit"], window: window)
+        try reachable(control("Review Login Items"), window: window)
+        try reachable(control("Refresh audit"), window: window)
         try capture("App access")
         try open("Configuration", window: window)
         try editSearch(app.textFields["Search configuration files"], window: window)
-        try reachable(app.buttons["Refresh"], window: window)
+        try reachable(control("Refresh"), window: window)
         try capture("Configuration")
         try open("Diagnose", window: window)
         try reachable(app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] 'Start '"))
             .firstMatch, window: window)
-        try reachable(app.buttons["Diagnose terminal startup…"], window: window)
+        try reachable(control("Diagnose terminal startup…"), window: window)
         try capture("Diagnose")
     }
 
@@ -242,6 +241,25 @@ final class PublishedAppUITests: XCTestCase {
         app.typeText(XCUIKeyboardKey.delete.rawValue)
         XCTAssertFalse((field.value as? String)?.contains(probe) == true,
                        "The search query must be clearable")
+    }
+
+    /// Shared styles can change the presentation case of human labels.
+    /// Real identifiers remain exact; controls and geometry remain strict.
+    @MainActor
+    private func control(_ title: String) -> XCUIElement {
+        let controls = app.descendants(matching: .any).matching(NSPredicate(
+            format: "elementType == %ld OR elementType == %ld OR elementType == %ld",
+            XCUIElement.ElementType.button.rawValue, XCUIElement.ElementType.popUpButton.rawValue,
+            XCUIElement.ElementType.menuButton.rawValue))
+        let identified = controls.matching(NSPredicate(format: "identifier == %@", title))
+        if identified.count > 0 {
+            XCTAssertEqual(identified.count, 1, "Control identifier must be unique: \(title)")
+            return identified.firstMatch
+        }
+        let labeled = controls.matching(NSPredicate(format: "label ==[c] %@ OR title ==[c] %@", title, title))
+        XCTAssertTrue(labeled.firstMatch.waitForExistence(timeout: 15), "Control label must exist: \(title)")
+        XCTAssertEqual(labeled.count, 1, "Control label must be unique: \(title)")
+        return labeled.firstMatch
     }
 
     @MainActor
