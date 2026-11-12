@@ -42,7 +42,7 @@ struct FanInvestigationView: View {
         VStack(alignment: .leading, spacing: 22) {
             Image(systemName: "fan").font(.system(size: 42)).foregroundStyle(PerformanceTheme.mintInk)
                 .accessibilityHidden(true)
-            SMSectionHeader("Why is your fan running?", size: 34).accessibilityLabel("Why is your fan running?")
+            SMSectionHeader("Why is your fan running?", size: 28).accessibilityLabel("Why is your fan running?")
                 .accessibilityAddTraits(.isHeader)
             Text("Record while the fan is loud. We’ll look for sustained CPU work, app and agent contributors, thermal pressure and macOS power constraints.")
                 .foregroundStyle(PerformanceTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
@@ -78,7 +78,7 @@ struct FanInvestigationView: View {
             }.pickerStyle(.segmented).frame(maxWidth: 260)
             Button("record \(model.selectedLength.rawValue) fan check", action: model.recordFanCheck)
                 .accessibilityLabel("Record \(model.selectedLength.rawValue) fan check")
-                .buttonStyle(DaddyButtonStyle(prominent: true))
+                .buttonStyle(SMButtonStyle(.brand, size: .compact))
             Text("Local and read-only. Nothing stops automatically. Two minutes gives more context than a quick check.")
                 .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
         }
@@ -86,7 +86,7 @@ struct FanInvestigationView: View {
 
     private var recording: some View {
         VStack(alignment: .leading, spacing: 20) {
-            SMSectionHeader("Watching possible heat contributors", size: 34).accessibilityLabel("Watching possible heat contributors")
+            SMSectionHeader("Watching possible heat contributors", size: 28).accessibilityLabel("Watching possible heat contributors")
                 .accessibilityAddTraits(.isHeader)
             ProgressView(value: model.progress).accessibilityLabel("Fan check progress")
             Text("\(model.progress.formatted(.percent.precision(.fractionLength(0)))) · Recording CPU, process activity, thermal state and available power constraints.")
@@ -153,7 +153,7 @@ struct FanInvestigationView: View {
                 Text(finding.nextCheck).fixedSize(horizontal: false, vertical: true)
                 Button("record another \(report.capture.duration >= 60 ? "2 min" : "15 sec") check", action: model.recordFanCheck)
                     .accessibilityLabel("Record another \(report.capture.duration >= 60 ? "2 min" : "15 sec") check")
-                    .buttonStyle(DaddyButtonStyle(prominent: true))
+                    .buttonStyle(SMButtonStyle(.brand, size: .compact))
                 if let baseline = model.baselineReport, let comparison = model.comparison {
                     Text("Compared with \(baseline.capture.startedAt.formatted(date: .omitted, time: .standard))")
                         .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)

@@ -19,7 +19,7 @@ enum PerformanceTheme {
 
     /// Library roles with Daddy surfaces and measured-evidence semantics.
     static let palette: SMPalette = {
-        var palette = SMPalette.ink.brand(
+        var palette = SMPalette.ink.dark.brand(
             Color(.sRGB, red: 107 / 255, green: 201 / 255, blue: 158 / 255, opacity: 1),
             foreground: .black)
         palette.background = fog
@@ -33,26 +33,13 @@ enum PerformanceTheme {
         palette.warning = amber
         palette.destructive = coral
         palette.accent = mintInk.opacity(0.11)
-        palette.radius = 8
+        palette.radius = 10
+        palette.displayFont = palette.sansFont
+        palette.input = divider
         palette.displayWeight = 600
         palette.displayTracking = -0.025
         return palette
     }()
-}
-
-/// Shared Daddy-series control pattern, copied from StorageButtonStyle.
-struct DaddyButtonStyle: ButtonStyle {
-    var prominent = false
-    func makeBody(configuration: Configuration) -> some View {
-        DaddyControlStyle(prominent: prominent, hoverFeedback: true)
-            .makeBody(configuration: configuration)
-    }
-}
-
-struct PrimaryActionButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        DaddyButtonStyle(prominent: true).makeBody(configuration: configuration)
-    }
 }
 
 extension View {
@@ -62,8 +49,33 @@ extension View {
         return environment(\.smPalette, palette)
             .tint(palette.brand)
             .foregroundStyle(palette.foreground)
-            .font(.custom(palette.sansFont, size: 16, relativeTo: .body))
+            .font(.custom(palette.sansFont, size: 14, relativeTo: .body))
             .background(palette.background.ignoresSafeArea())
             .preferredColorScheme(palette.isDark ? .dark : .light)
+    }
+}
+
+/// Product page introductions keep the measured evidence underneath compact.
+struct PerformancePageHeader: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(PerformanceTheme.mintInk)
+                .frame(width: 42, height: 42)
+                .background(PerformanceTheme.palette.brandSoft, in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 5) {
+                SMSectionHeader(title, size: 26)
+                    .accessibilityLabel(title).accessibilityAddTraits(.isHeader)
+                Text(subtitle).font(.callout)
+                    .foregroundStyle(PerformanceTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
     }
 }

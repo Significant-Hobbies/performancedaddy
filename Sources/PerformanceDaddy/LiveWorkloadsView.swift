@@ -36,7 +36,7 @@ struct LiveWorkloadsView: View {
             }
             footer
         }
-        .padding(24)
+        .padding(28)
         .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         .background(PerformanceTheme.fog)
         .helpOverlay()
@@ -61,14 +61,7 @@ struct LiveWorkloadsView: View {
     }
 
     private var heading: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 6) {
-                SMSectionHeader(page.rawValue, size: 30).accessibilityLabel(page.rawValue).accessibilityAddTraits(.isHeader)
-                Text(page.subtitle).foregroundStyle(PerformanceTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
-            }
-            DaddyArtwork(topic: page == .agents ? 8 : 5).frame(width: 72, height: 72)
-            Spacer()
-        }
+        PerformancePageHeader(title: page.rawValue, subtitle: page.subtitle, icon: page.icon)
     }
 
     @ViewBuilder private var headerActions: some View {
@@ -110,7 +103,7 @@ struct LiveWorkloadsView: View {
             Divider()
             metricButton(.sockets, title: "Open sockets", value: model.snapshot == nil || model.snapshot?.portsDate == .distantPast ? "—" : "\(model.portCount)", detail: "TCP listeners · bound UDP", color: PerformanceTheme.cyan)
         }
-        .frame(height: 82)
+        .frame(height: 78)
         .padding(.vertical, 8)
         .overlay(alignment: .top) { Rectangle().fill(PerformanceTheme.divider).frame(height: 1) }
         .overlay(alignment: .bottom) { Rectangle().fill(PerformanceTheme.divider).frame(height: 1) }
@@ -594,7 +587,7 @@ struct LiveWorkloadsView: View {
               Button { showingResourceEvidence = true } label: {
                   Label("Memory & thermals", systemImage: "thermometer.medium")
               }
-              .buttonStyle(DaddyButtonStyle())
+              .buttonStyle(SMButtonStyle(.outline, size: .compact))
               .popover(isPresented: $showingResourceEvidence, arrowEdge: .top) {
                   ResourceEvidenceView(snapshot: model.snapshot, paused: model.paused)
               }
@@ -644,7 +637,7 @@ private struct StopReviewView: View {
                 }
             }
         }.padding(24).frame(width: 520).background(Color.black)
-            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(DaddyButtonStyle())
+            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(SMButtonStyle(.outline, size: .compact))
     }
 }
 

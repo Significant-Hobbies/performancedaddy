@@ -1,3 +1,4 @@
+import SaaSMakerUI
 import AppKit
 import SwiftUI
 import XCTest
@@ -28,7 +29,7 @@ import XCTest
             let after = DiagnosisViewModel(); after.review(DiagnosticEngine().analyze(followUp))
             let views: [(String, AnyView)] = [("incident",AnyView(DashboardView(model: model, live: live, initialDestination: "Diagnose"))), ("follow-up",AnyView(DashboardView(model: after, live: live, initialDestination: "Diagnose"))), ("prepare",AnyView(FollowUpPreparationView(report: DiagnosticEngine().analyze(capture), onCancel: {}, onRecord: { _,_,_,_ in }))), ("hardware",AnyView(FanInvestigationView(model: model, hardware: hardware))), ("stacks",AnyView(ImportedProfileView(profile: profile)))]
             for (name,root) in views {
-                let view = NSHostingView(rootView: root.frame(width: width,height: 900).performanceTheme(PerformanceTheme.palette).buttonStyle(DaddyButtonStyle()))
+                let view = NSHostingView(rootView: root.frame(width: width,height: 900).performanceTheme(PerformanceTheme.palette).buttonStyle(SMButtonStyle(.outline, size: .compact)))
                 view.frame = NSRect(x: 0,y: 0,width: width,height: 900)
                 let window = NSWindow(contentRect: view.frame,styleMask: .borderless,backing: .buffered,defer: false)
                 window.contentView = view; view.layoutSubtreeIfNeeded()

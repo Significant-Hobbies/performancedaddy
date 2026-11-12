@@ -1,3 +1,4 @@
+import SaaSMakerUI
 import PerformanceCore
 import SwiftUI
 
@@ -13,7 +14,7 @@ struct TopContributorsView: View {
             HStack {
                 Text(title).font(.headline).accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("Done") { dismiss() }.buttonStyle(DaddyButtonStyle())
+                Button("Done") { dismiss() }.buttonStyle(SMButtonStyle(.outline, size: .compact))
                     .keyboardShortcut(.cancelAction)
             }
             let rows = model.topContributors(for: metric)

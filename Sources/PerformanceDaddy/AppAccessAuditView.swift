@@ -1,3 +1,4 @@
+import SaaSMakerUI
 import AppKit
 import PerformanceCore
 import ServiceManagement
@@ -78,12 +79,7 @@ struct AppAccessAuditView: View {
         GeometryReader { geometry in
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("App access").font(.largeTitle.weight(.semibold)).accessibilityAddTraits(.isHeader)
-                    Text("Review launch files and keep dated notes from System Settings.")
-                        .foregroundStyle(PerformanceTheme.secondaryInk)
-                }
-                Spacer()
+                PerformancePageHeader(title: "App access", subtitle: "Review launch files and keep dated notes from System Settings.", icon: "lock.shield")
                 Button("Review Login Items") { SMAppService.openSystemSettingsLoginItems() }
                 Button(scanning ? "Checking…" : "Refresh audit") { Task { await refresh() } }
                     .disabled(scanning)
@@ -437,7 +433,7 @@ struct AppAccessAuditView: View {
                     .disabled(acting)
             }
         }.padding(24).frame(width: 520).background(Color.black)
-            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(DaddyButtonStyle())
+            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(SMButtonStyle(.outline, size: .compact))
     }
 
     private func permissionReviewSheet(_ candidate: PermissionResetCandidate) -> some View {
@@ -454,6 +450,6 @@ struct AppAccessAuditView: View {
                     .disabled(acting)
             }
         }.padding(24).frame(width: 520).background(Color.black)
-            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(DaddyButtonStyle())
+            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(SMButtonStyle(.outline, size: .compact))
     }
 }
