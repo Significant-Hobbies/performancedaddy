@@ -36,7 +36,7 @@ struct ShellDiagnosisView: View {
                     HStack {
                         Button("measure minimal shell") { start(profile: false) }.accessibilityLabel("Measure minimal shell").disabled(running)
                         Button("profile my startup") { start(profile: true) }.accessibilityLabel("Profile my startup")
-                            .buttonStyle(DaddyButtonStyle(prominent: true)).disabled(!consent || running)
+                            .buttonStyle(SMButtonStyle(.brand, size: .compact)).disabled(!consent || running)
                     }
                     if running {
                         HStack {

@@ -13,7 +13,7 @@ struct ResourceEvidenceView: View {
             HStack {
                 SMSectionHeader("Memory & thermals", size: 22).accessibilityLabel("Memory & thermals").accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("done") { dismiss() }.accessibilityLabel("Done").buttonStyle(DaddyButtonStyle())
+                Button("done") { dismiss() }.accessibilityLabel("Done").buttonStyle(SMButtonStyle(.outline, size: .compact))
                     .keyboardShortcut(.cancelAction)
             }
             if let snapshot {

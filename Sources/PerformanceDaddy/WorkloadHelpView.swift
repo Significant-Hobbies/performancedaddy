@@ -1,3 +1,4 @@
+import SaaSMakerUI
 import SwiftUI
 
 /// Clickable help complements macOS hover tooltips and remains keyboard accessible.
@@ -23,7 +24,7 @@ struct WorkloadHelpView: View {
             }
         }.padding(20).frame(width: 410, height: 500)
             .foregroundStyle(PerformanceTheme.ink).background(PerformanceTheme.fog)
-            .preferredColorScheme(.dark).buttonStyle(DaddyButtonStyle())
+            .preferredColorScheme(.dark).buttonStyle(SMButtonStyle(.outline, size: .compact))
     }
     private func entry(_ title: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {

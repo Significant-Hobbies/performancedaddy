@@ -28,7 +28,7 @@ final class DesignEvidenceTests: XCTestCase {
                     let view = NSHostingView(rootView: LiveWorkloadsView(model: model, page: page)
                         .smTheme(PerformanceTheme.palette)
                         .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk)
-                        .buttonStyle(DaddyButtonStyle()).frame(width: width, height: 800))
+                        .buttonStyle(SMButtonStyle(.outline, size: .compact)).frame(width: width, height: 800))
                     view.frame = NSRect(x: 0, y: 0, width: width, height: 800)
                     let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
                     window.contentView = view

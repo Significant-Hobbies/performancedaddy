@@ -66,10 +66,10 @@ struct FollowUpPreparationView: View {
                 Button("cancel", action: onCancel)
                 Spacer()
                 Button("start follow-up") { onRecord(task, change, detail, sameTask) }
-                    .buttonStyle(DaddyButtonStyle(prominent: true))
+                    .buttonStyle(SMButtonStyle(.brand, size: .compact))
                     .disabled(!sameTask || task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.padding(28).frame(width: 570)
-            .performanceTheme(PerformanceTheme.palette).buttonStyle(DaddyButtonStyle())
+            .performanceTheme(PerformanceTheme.palette).buttonStyle(SMButtonStyle(.outline, size: .compact))
     }
 }

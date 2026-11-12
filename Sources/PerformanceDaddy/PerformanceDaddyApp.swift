@@ -1,3 +1,4 @@
+import SaaSMakerUI
 import SwiftUI
 
 @main
@@ -46,7 +47,7 @@ struct PerformanceDaddyApp: App {
                 }
         }
         .defaultSize(width: 1_180, height: 800)
-        .windowStyle(.hiddenTitleBar)
+        .windowStyle(.titleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
@@ -55,14 +56,18 @@ struct PerformanceDaddyApp: App {
         }
         WindowGroup(id: "agent-wall") {
             AgentWallView(model: live)
+                .performanceTheme(PerformanceTheme.palette)
+                .buttonStyle(SMButtonStyle(.outline, size: .compact))
                 .frame(minWidth: 520, minHeight: 360)
                 .background(MonitoringSurface(model: live))
                 .task { live.start() }
         }
         .defaultSize(width: 1080, height: 720)
-        .windowStyle(.hiddenTitleBar)
+        .windowStyle(.titleBar)
         MenuBarExtra {
             AgentStatusMenu(model: live, diagnosis: diagnosis, updates: updates, login: login)
+                .performanceTheme(PerformanceTheme.palette)
+                .buttonStyle(SMButtonStyle(.outline, size: .compact))
                 .background(MonitoringSurface(model: live))
         } label: {
             AgentStatusMenuBarLabel(model: live, alerts: alerts)
@@ -71,6 +76,8 @@ struct PerformanceDaddyApp: App {
         .menuBarExtraStyle(.window)
         Settings {
             LoadAlertSettingsView(alerts: alerts, live: live)
+                .performanceTheme(PerformanceTheme.palette)
+                .buttonStyle(SMButtonStyle(.outline, size: .compact))
         }
     }
 

@@ -28,13 +28,7 @@ struct ConfigurationView: View {
         GeometryReader { geometry in
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    SMSectionHeader("Configuration", size: 30).accessibilityLabel("Configuration").accessibilityAddTraits(.isHeader)
-                    Text("Find settings for your local shell and agent tools.")
-                        .foregroundStyle(PerformanceTheme.secondaryInk)
-                }
-                DaddyArtwork(topic: 5).frame(width: 72, height: 72)
-                Spacer()
+                PerformancePageHeader(title: "Configuration", subtitle: "Find settings for your local shell and agent tools.", icon: "doc.text.magnifyingglass")
                 Button(scanning ? "Scanning…" : "Refresh") { Task { await refresh() } }
                     .disabled(scanning)
             }
@@ -107,7 +101,7 @@ struct ConfigurationView: View {
                     Text("Metadata: \(scan.sampledAt.formatted(date: .omitted, time: .standard))")
                 }.font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
             }
-        }.padding(24).frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+        }.padding(28).frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
             .background(PerformanceTheme.fog)
             .task { if scan == nil { await refresh() } }
         }

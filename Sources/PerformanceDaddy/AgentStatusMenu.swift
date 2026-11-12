@@ -1,3 +1,4 @@
+import SaaSMakerUI
 import AppKit
 import Combine
 import PerformanceCore
@@ -193,9 +194,9 @@ struct AgentStatusMenu: View {
 
             HStack(spacing: 10) {
                 Button("Open Agent Sessions") { open(id: "agent-wall") }
-                    .buttonStyle(DaddyButtonStyle(prominent: true))
+                    .buttonStyle(SMButtonStyle(.brand, size: .compact))
                 Button("Open App") { open(id: "main") }
-                    .buttonStyle(DaddyButtonStyle())
+                    .buttonStyle(SMButtonStyle(.outline, size: .compact))
                 Spacer(minLength: 0)
                 Menu {
                     Button(model.paused ? "Resume monitoring" : "Pause monitoring") { model.paused.toggle() }

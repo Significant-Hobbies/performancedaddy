@@ -21,6 +21,7 @@ struct DashboardView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
+                .buttonStyle(SMButtonStyle(.outline, size: .compact))
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 220)
         } detail: {
             ZStack {
@@ -92,9 +93,12 @@ struct DashboardView: View {
                 }
             }
             .background(PerformanceTheme.fog)
+            .buttonStyle(SMButtonStyle(.outline, size: .compact))
             .clipped()
         }
-        .sheet(item: $model.importedProfile) { ImportedProfileView(profile: $0) }
+        .sheet(item: $model.importedProfile) {
+            ImportedProfileView(profile: $0).buttonStyle(SMButtonStyle(.outline, size: .compact))
+        }
         .sheet(isPresented: $model.preparingFollowUp) {
             if let report = model.report {
                 FollowUpPreparationView(report: report, onCancel: { model.preparingFollowUp = false }, onRecord: model.recordFollowUp)
@@ -111,8 +115,8 @@ struct DashboardView: View {
             if let requested { destination = requested; live.requestedDestination = nil }
         }
         .performanceTheme(PerformanceTheme.palette)
-        .buttonStyle(DaddyButtonStyle())
-        .toolbar(.hidden, for: .windowToolbar)
+        .toolbarBackground(PerformanceTheme.fog, for: .windowToolbar)
+        .toolbarBackground(.visible, for: .windowToolbar)
         .task {
             guard !PerformanceStartupCheck.enabled else { return }
             await model.loadHistory()
@@ -145,17 +149,17 @@ struct DashboardView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 9) {
                 DaddyArtwork(brand: true).frame(width: 24, height: 24)
                 Text("performancedaddy")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .font(.custom(PerformanceTheme.palette.sansFont, size: 17).weight(.semibold))
                     .tracking(-0.6).lineLimit(1).minimumScaleFactor(0.8)
-            }.padding(.top, 20).padding(.bottom, 10)
+            }.padding(.top, 16).padding(.bottom, 10)
             Button { destination = "Diagnose"; model.markSlowMoment() } label: {
                 Label("feels slow now", systemImage: "waveform.path.ecg").accessibilityLabel("Feels slow now")
                     .frame(maxWidth: .infinity).frame(height: 28)
-            }.buttonStyle(DaddyButtonStyle(prominent: true))
+            }.buttonStyle(SMButtonStyle(.brand, size: .compact))
                 .help("Mark this moment, keep up to two minutes of preceding observations, and record another 30 seconds. Read-only.")
             Picker("Symptom", selection: $model.selectedSymptom) {
                 ForEach(ReportedSymptom.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -194,7 +198,7 @@ struct DashboardView: View {
                 Image(systemName: icon).frame(width: 20).foregroundStyle(PerformanceTheme.mintInk)
                 Text(title.lowercased()).accessibilityLabel(title)
                 Spacer()
-            }.padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+            }.padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
                 .contentShape(Rectangle())
         }.buttonStyle(.plain)
             .background(destination == title ? PerformanceTheme.mintInk.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 7))
@@ -258,7 +262,7 @@ private struct StartDiagnosisView: View {
             }
 
             VStack(spacing: 10) {
-                SMSectionHeader("What is slowing your Mac?", alignment: .center, size: 34).accessibilityLabel("What is slowing your Mac?")
+                SMSectionHeader("What is slowing your Mac?", alignment: .center, size: 28).accessibilityLabel("What is slowing your Mac?")
                     .foregroundStyle(PerformanceTheme.ink)
                 Text("Record while the slowdown is happening. This recording reads local system evidence and makes no changes.")
                     .font(.body)
@@ -278,7 +282,7 @@ private struct StartDiagnosisView: View {
 
             Button("start \(selectedLength.rawValue) check", action: onStart)
                 .accessibilityLabel("Start \(selectedLength.rawValue) check")
-                .buttonStyle(PrimaryActionButtonStyle())
+                .buttonStyle(SMButtonStyle(.brand, size: .compact))
 
             if let savedBaseline {
                 Text("This check will compare with your saved baseline from \(savedBaseline.capture.startedAt.formatted(date: .abbreviated, time: .shortened)). Use a similar workload for a meaningful comparison.")
@@ -356,7 +360,7 @@ private struct RecordingView: View {
             .accessibilityLabel("Recording progress")
             .accessibilityValue(progress.formatted(.percent.precision(.fractionLength(0))))
 
-            SMSectionHeader("Watching what happens", alignment: .center, size: 34).accessibilityLabel("Watching what happens")
+            SMSectionHeader("Watching what happens", alignment: .center, size: 28).accessibilityLabel("Watching what happens")
                 .foregroundStyle(PerformanceTheme.ink)
             Text("Sampling CPU, processes, memory, swap, disk headroom and thermal state. No changes are being made.")
                 .font(.body)
@@ -471,7 +475,7 @@ private struct ReportView: View {
                         HStack(spacing: 12) {
                             Button("record follow-up", action: onVerify)
                                 .accessibilityLabel("Record follow-up")
-                                .buttonStyle(PrimaryActionButtonStyle())
+                                .buttonStyle(SMButtonStyle(.brand, size: .compact))
                             if explanation.reviewSearch != nil {
                                 Button("review workload", action: onInspect)
                             }
@@ -643,24 +647,12 @@ private struct TriageBand<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        SMCard(padding: 24) {
-            ViewThatFits(in: .horizontal) {
-                horizontalBand
-                VStack(alignment: .leading, spacing: 16) {
-                    bandHeading
-                    Divider()
-                    content.frame(maxWidth: .infinity, alignment: .leading)
-                }
+        SMCard(padding: 20) {
+            VStack(alignment: .leading, spacing: 18) {
+                bandHeading
+                Divider().overlay(PerformanceTheme.divider)
+                content.frame(maxWidth: .infinity, alignment: .leading)
             }
-        }
-    }
-
-    private var horizontalBand: some View {
-        HStack(alignment: .top, spacing: 24) {
-            bandHeading
-                .frame(width: 124, alignment: .leading)
-            Divider()
-            content.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
