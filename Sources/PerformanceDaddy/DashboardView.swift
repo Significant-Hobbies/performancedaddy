@@ -3,6 +3,7 @@ import SwiftUI
 import SaaSMakerUI
 
 struct DashboardView: View {
+    @Environment(\.openSettings) private var openSettings
     @ObservedObject var model: DiagnosisViewModel
     @ObservedObject var live: LiveViewModel
     @State private var destination = "Processes"
@@ -10,20 +11,24 @@ struct DashboardView: View {
     @State private var showingDeleteBaseline = false
     @State private var showingReplaceBaseline = false
     private var onDestinationChanged: ((String) -> Void)?
+    private let startsServices: Bool
 
     init(model: DiagnosisViewModel, live: LiveViewModel, initialDestination: String = "Processes",
-         onDestinationChanged: ((String) -> Void)? = nil) {
+         startsServices: Bool = true, onDestinationChanged: ((String) -> Void)? = nil) {
         self.model = model; self.live = live
+        self.startsServices = startsServices
         self.onDestinationChanged = onDestinationChanged
         _destination = State(initialValue: initialDestination)
     }
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             sidebar
-                .buttonStyle(SMMacButtonStyle())
-                .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 220)
-        } detail: {
+            VStack(spacing: 0) {
+                SMWorkspaceScopeBar(LivePage(rawValue: destination) == nil ? "Investigation" : "Live diagnostics",
+                                    systemImage: "waveform.path.ecg", detail: "Local to this Mac") {
+                    EmptyView()
+                }
             ZStack {
                 if let page = LivePage(rawValue: destination) {
                     LiveWorkloadsView(model: live, page: page)
@@ -38,9 +43,8 @@ struct DashboardView: View {
                     }
                 } else {
                     VStack(spacing: 0) {
-                        HStack {
-                            SMDisplay("Root-cause analysis", size: 17).accessibilityLabel("Root-cause analysis")
-                            Spacer()
+                        SMWorkspaceHeader("Root-cause analysis", subtitle: "Record the slowdown. Review the evidence.") {
+                          HStack(spacing: 8) {
                             Button("import stacks", action: model.importProfile).disabled(model.importingProfile)
                             if model.report != nil { Button("export trace", action: model.exportTrace) }
                             Menu("Recent runs (\(model.recentReports.count))") {
@@ -81,7 +85,8 @@ struct DashboardView: View {
                                     .help(model.baselineStorageError ?? "Known-good baseline storage unavailable")
                                     .accessibilityLabel(model.baselineStorageError ?? "Known-good baseline storage unavailable")
                             }
-                        }.padding(.horizontal, 28).padding(.top, 16)
+                          }
+                        }.padding(.horizontal, 30).padding(.top, 24)
                         AppResponseSettingsView(live: live).padding(.horizontal, 28).padding(.vertical, 10)
                         if let error = model.errorMessage, model.report != nil {
                             Text(error).font(.callout).foregroundStyle(PerformanceTheme.coral).padding(.horizontal, 28)
@@ -95,6 +100,7 @@ struct DashboardView: View {
             .background(PerformanceTheme.fog)
             .buttonStyle(SMMacButtonStyle())
             .clipped()
+            }
         }
         .sheet(item: $model.importedProfile) {
             ImportedProfileView(profile: $0).buttonStyle(SMMacButtonStyle())
@@ -114,11 +120,10 @@ struct DashboardView: View {
         .onChange(of: live.requestedDestination, initial: true) { _, requested in
             if let requested { destination = requested; live.requestedDestination = nil }
         }
+        .background(SMWorkspaceWindowChrome())
         .performanceTheme(PerformanceTheme.palette)
-        .toolbarBackground(PerformanceTheme.fog, for: .windowToolbar)
-        .toolbarBackground(.visible, for: .windowToolbar)
         .task {
-            guard !PerformanceStartupCheck.enabled else { return }
+            guard startsServices, !PerformanceStartupCheck.enabled else { return }
             await model.loadHistory()
             live.start()
         }
@@ -149,60 +154,66 @@ struct DashboardView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 9) {
-                DaddyArtwork(brand: true).frame(width: 24, height: 24)
+        SMWorkspaceSidebar {
+            HStack(spacing: 8) {
+                DaddyArtwork(brand: true).frame(width: 28, height: 32)
                 Text("performancedaddy")
-                    .font(.custom(PerformanceTheme.palette.sansFont, size: 17).weight(.semibold))
-                    .tracking(-0.6).lineLimit(1).minimumScaleFactor(0.8)
-            }.padding(.top, 16).padding(.bottom, 10)
-            Button { destination = "Diagnose"; model.markSlowMoment() } label: {
-                Label("feels slow now", systemImage: "waveform.path.ecg").accessibilityLabel("Feels slow now")
-                    .frame(maxWidth: .infinity).frame(height: 28)
-            }.buttonStyle(SMMacButtonStyle(.primary))
-                .help("Mark this moment, keep up to two minutes of preceding observations, and record another 30 seconds. Read-only.")
-            Picker("Symptom", selection: $model.selectedSymptom) {
-                ForEach(ReportedSymptom.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }.font(.caption).disabled(model.isRecording)
-            VStack(alignment: .leading, spacing: 5) {
-                navigationHeading("LIVE")
-                ForEach(LivePage.allCases) { page in
-                    navigationItem(page.rawValue, icon: page.icon)
+                    .font(.custom(PerformanceTheme.palette.displayFont, size: 16).weight(.semibold))
+                    .tracking(-0.5).lineLimit(1).minimumScaleFactor(0.85)
+            }
+        } navigation: {
+            ForEach(LivePage.allCases) { page in
+                navigationItem(page.rawValue, icon: page.icon)
+            }
+            navigationHeading("Investigate").padding(.top, 18)
+            navigationItem("Diagnose", icon: "waveform.path.ecg")
+            navigationItem("Fans & heat", icon: "fan")
+            navigationItem("App access", icon: "lock.shield")
+            navigationItem("Configuration", icon: "doc.text.magnifyingglass")
+        } footer: {
+            VStack(alignment: .leading, spacing: 18) {
+                Button { destination = "Diagnose"; model.markSlowMoment() } label: {
+                    Label("Feels slow now", systemImage: "waveform.path.ecg")
+                        .frame(maxWidth: .infinity)
+                }.buttonStyle(SMMacButtonStyle(.primary))
+                    .help("Mark this moment, keep up to two minutes of preceding observations, and record another 30 seconds. Read-only.")
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("Symptom").font(.custom(PerformanceTheme.palette.sansFont, size: 11)).foregroundStyle(PerformanceTheme.secondaryInk)
+                    Picker("Symptom", selection: $model.selectedSymptom) {
+                        ForEach(ReportedSymptom.allCases, id: \.self) { Text(symptomLabel($0)).tag($0) }
+                    }.labelsHidden().frame(maxWidth: .infinity).font(.caption).disabled(model.isRecording)
+                        .accessibilityValue(model.selectedSymptom.rawValue).help(model.selectedSymptom.rawValue)
                 }
-                navigationHeading("INVESTIGATE").padding(.top, 9)
-                navigationItem("Fans & heat", icon: "fan")
-                navigationItem("App access", icon: "lock.shield")
-                navigationItem("Configuration", icon: "doc.text.magnifyingglass")
-                navigationItem("Diagnose", icon: "waveform.path.ecg")
-            }
-            Spacer(minLength: 12)
-            VStack(alignment: .leading, spacing: 7) {
-                Text("On your Mac. Under your control.").font(.caption)
-                Text("\(live.recentEvidenceCount) recent observations in memory. Nothing stops until you review it.").font(.caption)
-            }
-            .foregroundStyle(PerformanceTheme.secondaryInk)
+                Text("\(live.recentEvidenceCount) observations in memory")
+                    .font(.custom(PerformanceTheme.palette.sansFont, size: 11)).foregroundStyle(PerformanceTheme.secondaryInk)
+                HStack {
+                    Label("Read-only sampling", systemImage: "lock.shield")
+                    Spacer(minLength: 4)
+                    Button { openSettings() } label: { Image(systemName: "gearshape") }
+                        .buttonStyle(.plain).accessibilityLabel("Settings").help("Settings · ⌘,")
+                }.font(.custom(PerformanceTheme.palette.sansFont, size: 11)).foregroundStyle(PerformanceTheme.secondaryInk)
+            }.padding(.horizontal, 8)
         }
-        .padding(.horizontal, 15).padding(.bottom, 16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.black)
     }
 
     private func navigationHeading(_ title: String) -> some View {
-        Text(title.lowercased()).font(.custom(PerformanceTheme.palette.displayFont, size: 10).weight(.semibold)).tracking(1)
+        Text(title.uppercased()).font(.custom(PerformanceTheme.palette.sansFont, size: 10).weight(.medium)).tracking(1.2)
             .foregroundStyle(PerformanceTheme.secondaryInk).padding(.horizontal, 10).padding(.vertical, 4)
     }
 
     private func navigationItem(_ title: String, icon: String) -> some View {
-        Button { destination = title } label: {
-            HStack {
-                Image(systemName: icon).frame(width: 20).foregroundStyle(PerformanceTheme.mintInk)
-                Text(title.lowercased()).accessibilityLabel(title)
-                Spacer()
-            }.padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
-                .contentShape(Rectangle())
-        }.buttonStyle(.plain)
-            .background(destination == title ? PerformanceTheme.mintInk.opacity(0.11) : .clear, in: RoundedRectangle(cornerRadius: 7))
-            .accessibilityAddTraits(destination == title ? .isSelected : [])
+        SMWorkspaceNavigationItem(title, systemImage: icon, isSelected: destination == title) { destination = title }
+    }
+
+    private func symptomLabel(_ symptom: ReportedSymptom) -> String {
+        switch symptom {
+        case .wholeMac: "Whole Mac"
+        case .typing: "Typing lag"
+        case .switching: "App switching"
+        case .scrolling: "Scrolling stalls"
+        case .beachball: "Beachballs"
+        case .fans: "Loud fans"
+        }
     }
 
     @ViewBuilder
@@ -250,44 +261,43 @@ private struct StartDiagnosisView: View {
     let onStart: () -> Void
 
     var body: some View {
-        VStack(spacing: 26) {
-            Spacer()
-            ZStack {
-                Circle()
-                    .fill(PerformanceTheme.coralWash)
-                    .frame(width: 92, height: 92)
-                Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 38, weight: .semibold))
-                    .foregroundStyle(PerformanceTheme.coral)
+        VStack(alignment: .leading, spacing: 24) {
+            HStack(alignment: .center, spacing: 28) {
+                VStack(alignment: .leading, spacing: 13) {
+                    Text("A CLEARER PICTURE").font(.custom(PerformanceTheme.palette.sansFont, size: 10).weight(.medium))
+                        .tracking(1.4).foregroundStyle(PerformanceTheme.mintInk)
+                    Text("What is slowing\nyour Mac?")
+                        .font(.custom(PerformanceTheme.palette.displayFont, size: 32).weight(.semibold))
+                        .tracking(-0.7).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    Text("Record while it happens. We’ll connect process, memory and system evidence in one review.")
+                        .font(.custom(PerformanceTheme.palette.sansFont, size: 13))
+                        .foregroundStyle(PerformanceTheme.secondaryInk).lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                DaddyArtwork(topic: 0).frame(width: 160, height: 160)
             }
-
-            VStack(spacing: 10) {
-                SMSectionHeader("What is slowing your Mac?", alignment: .center, size: 28).accessibilityLabel("What is slowing your Mac?")
-                    .foregroundStyle(PerformanceTheme.ink)
-                Text("Record while the slowdown is happening. This recording reads local system evidence and makes no changes.")
-                    .font(.body)
-                    .foregroundStyle(PerformanceTheme.secondaryInk)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 590)
-                    .lineSpacing(3)
-            }
-
-            Picker("Recording length", selection: $selectedLength) {
-                ForEach(DiagnosisViewModel.CaptureLength.allCases) { length in
-                    Text(length.rawValue).tag(length)
+            Rectangle().fill(PerformanceTheme.divider).frame(height: 1)
+            VStack(alignment: .leading, spacing: 18) {
+                SMSettingsRow("Recording length", subtitle: "Choose a short check or a longer window for sustained problems.") {
+                    Picker("Recording length", selection: $selectedLength) {
+                        ForEach(DiagnosisViewModel.CaptureLength.allCases) { length in
+                            Text(length.rawValue).tag(length)
+                        }
+                    }.pickerStyle(.segmented).frame(width: 220)
                 }
+                Button("Start \(selectedLength.rawValue) check", action: onStart)
+                    .accessibilityLabel("Start \(selectedLength.rawValue) check")
+                    .buttonStyle(SMMacButtonStyle(.primary))
+                Label("Local and read-only. Nothing changes during a recording.", systemImage: "lock.shield")
+                    .font(.custom(PerformanceTheme.palette.sansFont, size: 12))
+                    .foregroundStyle(PerformanceTheme.secondaryInk)
             }
-            .pickerStyle(.segmented)
-            .frame(width: 260)
-
-            Button("start \(selectedLength.rawValue) check", action: onStart)
-                .accessibilityLabel("Start \(selectedLength.rawValue) check")
-                .buttonStyle(SMMacButtonStyle(.primary))
 
             if let savedBaseline {
                 Text("This check will compare with your saved baseline from \(savedBaseline.capture.startedAt.formatted(date: .abbreviated, time: .shortened)). Use a similar workload for a meaningful comparison.")
                     .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
-                    .multilineTextAlignment(.center).frame(maxWidth: 590)
+                    .frame(maxWidth: 590, alignment: .leading)
             }
 
             Button { showingShellDiagnosis = true } label: {
@@ -307,10 +317,9 @@ private struct StartDiagnosisView: View {
                 HStack(spacing: 24) { capabilities }
                 VStack(alignment: .leading, spacing: 10) { capabilities }
             }
-            .padding(.top, 18)
-            Spacer()
+            .padding(.top, 8)
         }
-        .padding(48)
+        .padding(30).frame(maxWidth: 850, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

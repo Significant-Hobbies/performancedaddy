@@ -13,45 +13,101 @@ struct LiveWorkloadsView: View {
     @State private var showingResourceEvidence = false
     @State private var showingHelp = false
     @State private var topMetric: LiveViewModel.ToolbarMetric?
+    @State private var showingCompactInspector = false
     @FocusState private var searchFocused: Bool
 
     var body: some View {
         GeometryReader { geometry in
-        VStack(alignment: .leading, spacing: 18) {
-            header.zIndex(20)
+        let selectedProcess = self.selectedProcess
+        VStack(alignment: .leading, spacing: 20) {
+            header(showsArtwork: geometry.size.width < 900 || selectedProcess != nil || model.snapshot == nil).zIndex(20)
             metrics
             if page == .memory { memoryChart }
             controls
             if model.snapshot == nil {
                 ProgressView("Reading local processes and listeners…").frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                HSplitView {
-                    processTable.frame(minWidth: min(440, max(300, geometry.size.width - 320)), minHeight: 0, maxHeight: .infinity)
-                    if let selected = model.rows(for: page).first(where: { model.selection.contains($0.id) }) ?? model.selected {
-                        inspector(selected).frame(minWidth: 260, idealWidth: 320, maxWidth: 390)
+                if geometry.size.width >= 900 {
+                    HStack(spacing: 0) {
+                        processTable.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        Rectangle().fill(PerformanceTheme.divider).frame(width: 1)
+                        Group {
+                            if let selectedProcess { inspector(selectedProcess) }
+                            else { inspectorIntroduction }
+                        }.frame(width: 262)
                     }
+                    .frame(minHeight: 100, maxHeight: .infinity)
+                    .layoutPriority(-1)
+                } else {
+                    VStack(spacing: 0) {
+                        ZStack {
+                            processTable.frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .opacity(showingCompactInspector && selectedProcess != nil ? 0 : 1)
+                                .allowsHitTesting(!showingCompactInspector || selectedProcess == nil)
+                                .accessibilityHidden(showingCompactInspector && selectedProcess != nil)
+                            if showingCompactInspector, let selectedProcess {
+                                inspector(selectedProcess).frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .background(PerformanceTheme.fog)
+                            }
+                        }
+                        if let selectedProcess {
+                            Button { showingCompactInspector.toggle() } label: {
+                                HStack {
+                                    Image(systemName: showingCompactInspector ? "arrow.left" : "sidebar.right")
+                                    Text(showingCompactInspector ? "Back to process list" : "Inspect \(selectedProcess.sortName)").lineLimit(1)
+                                    Spacer(minLength: 8)
+                                    Text(LiveViewModel.bytes(selectedProcess.memory)).monospacedDigit()
+                                }.font(.custom(PerformanceTheme.palette.sansFont, size: 12).weight(.medium))
+                            }.buttonStyle(SMMacButtonStyle()).padding(.top, 12)
+                        }
+                    }.frame(minHeight: 100, maxHeight: .infinity).layoutPriority(-1)
                 }
-                .frame(minHeight: 100, maxHeight: .infinity)
-                .layoutPriority(-1)
             }
             footer
         }
-        .padding(28)
+        .padding(.horizontal, 30).padding(.top, 24).padding(.bottom, 16)
         .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
         .background(PerformanceTheme.fog)
         .helpOverlay()
         .sheet(item: $model.review) { review in StopReviewView(model: model, review: review) }
         .sheet(isPresented: $showingAgentHookSetup) { AgentHookSetupView() }
         .onChange(of: page) { _, page in
+            showingCompactInspector = false
             model.selection = []; model.search = ""
             model.sortOrder = page == .memory ? [KeyPathComparator(\LiveProcess.memory, order: .reverse)] :
                 page == .ports ? [KeyPathComparator(\LiveProcess.sortPort)] : [KeyPathComparator(\LiveProcess.sortCPU, order: .reverse)]
         }
+        .onChange(of: model.selection) { _, selection in
+            if selection.isEmpty { showingCompactInspector = false }
+        }
         }
     }
 
-    private var header: some View {
-        PerformancePageHeader(title: page.rawValue, subtitle: page.subtitle, icon: page.icon) {
+    private var selectedProcess: LiveProcess? {
+        model.rows(for: page).first(where: { model.selection.contains($0.id) }) ?? model.selected
+    }
+
+    private var inspectorIntroduction: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("WORKLOAD DETAILS").font(.custom(PerformanceTheme.palette.sansFont, size: 10).weight(.medium))
+                .tracking(1.2).foregroundStyle(PerformanceTheme.secondaryInk)
+            Text("A closer look.").font(.custom(PerformanceTheme.palette.displayFont, size: 23).weight(.semibold))
+                .tracking(-0.4)
+            Text("Select a process to see its origin, resource history and listening ports.")
+                .font(.custom(PerformanceTheme.palette.sansFont, size: 12)).lineSpacing(4)
+                .foregroundStyle(PerformanceTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 24)
+            DaddyArtwork(topic: 5).frame(width: 130, height: 130).frame(maxWidth: .infinity).padding(.bottom, 12)
+            Label("Review before stopping", systemImage: "lock.shield")
+                .font(.custom(PerformanceTheme.palette.sansFont, size: 12).weight(.medium))
+            Text("Every stop opens an exact-target review. Sampling only reads local evidence.")
+                .font(.custom(PerformanceTheme.palette.sansFont, size: 11)).lineSpacing(3)
+                .foregroundStyle(PerformanceTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
+        }.padding(.leading, 24).padding(.top, 10).padding(.bottom, 10)
+    }
+
+    private func header(showsArtwork: Bool) -> some View {
+        PerformancePageHeader(title: page.rawValue, subtitle: page.subtitle, icon: page.icon, showsArtwork: showsArtwork) {
             HStack(spacing: 8) { headerActions }
         }
     }
@@ -95,8 +151,8 @@ struct LiveWorkloadsView: View {
             Divider()
             metricButton(.sockets, title: "Open sockets", value: model.snapshot == nil || model.snapshot?.portsDate == .distantPast ? "—" : "\(model.portCount)", detail: "TCP listeners · bound UDP", color: PerformanceTheme.cyan)
         }
-        .frame(height: 78)
-        .padding(.vertical, 8)
+        .frame(height: 68)
+        .padding(.vertical, 6)
         .overlay(alignment: .top) { Rectangle().fill(PerformanceTheme.divider).frame(height: 1) }
         .overlay(alignment: .bottom) { Rectangle().fill(PerformanceTheme.divider).frame(height: 1) }
         .popover(item: $topMetric, arrowEdge: .top) { metric in
@@ -117,9 +173,9 @@ struct LiveWorkloadsView: View {
     private func metric(_ title: String, value: String, detail: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title).font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
-            Text(value).font(.title2.weight(.semibold)).monospacedDigit().foregroundStyle(color)
+            Text(value).font(.custom(PerformanceTheme.palette.displayFont, size: 23).weight(.semibold)).monospacedDigit().foregroundStyle(color)
             Text(detail).font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
-        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 16)
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12)
             .accessibilityElement(children: .combine)
     }
 
@@ -507,7 +563,7 @@ struct LiveWorkloadsView: View {
                 }
                 Text("100% CPU represents one logical core. Session rows identify running agent processes, not conversation contents or whether an agent is waiting for input.")
                     .font(.caption).foregroundStyle(.secondary)
-            }.padding(.leading, 16).padding(.vertical, 10)
+            }.padding(.leading, 24).padding(.vertical, 10)
         }
     }
     private func parentName(_ process: LiveProcess) -> String {

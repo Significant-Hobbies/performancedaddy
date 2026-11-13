@@ -1,5 +1,23 @@
 # Design direction
 
+## Review desk A — owner-selected, 13 November 2026
+
+Keep the left sidebar and original artwork. The shared 198-point workspace rail
+holds persistent navigation, with Settings and compact live status at the bottom.
+Pure black canvas and native titlebar retain visible standard window controls.
+Mint marks selection and primary actions; off-white headings and muted supporting
+text establish hierarchy. Use Figtree display and Geist interface text, 30-point
+content gutters, flat virtualized lists and a quiet scope bar.
+
+Live pages keep measurements compact above search and the process list. At wide
+sizes, a 262-point detail column carries selection evidence and review guidance;
+narrow windows keep the list wide and open selected details in the same pane,
+with an explicit Back to process list action.
+Original doodle artwork belongs beside the explanation or action it supports.
+Do not add animations to live updates, row selection or scrolling. Process
+identity, sorting, multi-selection and exact-target stop review remain unchanged.
+Settings uses shared black groups and native controls rather than gray Form cards.
+
 ## Daddy series — authoritative owner direction, 2026-09-19
 
 The owner explicitly requested the exact styling and patterns from StorageDaddy

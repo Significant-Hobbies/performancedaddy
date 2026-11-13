@@ -42,10 +42,12 @@ struct FanInvestigationView: View {
 
     private var setup: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Image(systemName: "fan").font(.system(size: 42)).foregroundStyle(PerformanceTheme.mintInk)
-                .accessibilityHidden(true)
-            SMSectionHeader("Why is your fan running?", size: 28).accessibilityLabel("Why is your fan running?")
-                .accessibilityAddTraits(.isHeader)
+            HStack(alignment: .center, spacing: 24) {
+                SMSectionHeader("Why is your fan running?", size: 28).accessibilityLabel("Why is your fan running?")
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 16)
+                DaddyArtwork(topic: 5).frame(width: 100, height: 100)
+            }
             Text("Record while the fan is loud. We’ll look for sustained CPU work, app and agent contributors, thermal pressure and macOS power constraints.")
                 .foregroundStyle(PerformanceTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
             if let hardware { HardwareEvidenceView(hardware: hardware) }

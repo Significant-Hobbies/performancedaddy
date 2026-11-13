@@ -1,6 +1,7 @@
 import AppKit
 import PerformanceCore
 import SwiftUI
+import SaaSMakerUI
 import UserNotifications
 
 /// Posts sustained-load notifications. The only action that touches a process
@@ -341,13 +342,18 @@ struct LoadAlertSettingsView: View {
     @State private var isPaused = false
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            rules.tabItem { Label("Alerts", systemImage: "bell") }.tag(0)
-            workloads.tabItem { Label("Workload limits", systemImage: "app.badge") }.tag(1)
-            activity.tabItem { Label("Recent alerts", systemImage: "clock") }.tag(2)
+        VStack(alignment: .leading, spacing: 20) {
+            SMWorkspaceHeader("Settings", subtitle: "Choose when your Mac should get your attention.") { EmptyView() }
+                .padding(.horizontal, 28).padding(.top, 24)
+            TabView(selection: $selectedTab) {
+                rules.tabItem { Label("Alerts", systemImage: "bell") }.tag(0)
+                workloads.tabItem { Label("Workload limits", systemImage: "app.badge") }.tag(1)
+                activity.tabItem { Label("Recent alerts", systemImage: "clock") }.tag(2)
+            }.padding(.horizontal, 20).padding(.bottom, 20)
         }
-        .padding(12)
-        .frame(width: 600, height: 700)
+        .frame(width: 660, height: 740)
+        .background(Color.black)
+        .background(SMWorkspaceWindowChrome())
         .background(MonitoringSurface(model: live, tracksSampling: false, onWindowOpen: { open in
             windowOpen = open
             if open { isPaused = live.paused; updateStatus(); if selectedTab == 1 { updateWorkloads(from: live.snapshot) } }
@@ -364,8 +370,10 @@ struct LoadAlertSettingsView: View {
     }
 
     private var rules: some View {
-        Form {
-            Section {
+        ScrollView {
+          VStack(alignment: .leading, spacing: 24) {
+            SMSettingsGroup("Notifications", footer: "Local and read-only. Alerts never change fan speeds or stop anything automatically. Short spikes are ignored; missing readings break a sustained window.") {
+              VStack(alignment: .leading, spacing: 14) {
                 Toggle("Notify me about sustained performance problems", isOn: $alerts.enabled)
                 if isPaused {
                     Label("Monitoring is paused. Resume from the menu or main window.", systemImage: "pause.circle")
@@ -397,16 +405,18 @@ struct LoadAlertSettingsView: View {
                 } else if !LoadAlertCenter.notificationsAvailable {
                     Text("System notifications need the bundled app.").foregroundStyle(.secondary)
                 }
-            } footer: {
-                Text("Local and read-only. Alerts never change fan speeds or stop anything automatically. Short spikes are ignored; missing readings break a sustained window.")
+              }.padding(16)
             }
-            Section("Whole Mac") {
+            SMSettingsGroup("Whole Mac") {
+              VStack(alignment: .leading, spacing: 14) {
                 Stepper("CPU: \(alerts.cpuPercent)% of all cores", value: $alerts.cpuPercent, in: 50...100, step: 5)
                 Stepper("CPU sustained for \(alerts.cpuSeconds) seconds", value: $alerts.cpuSeconds, in: 30...600, step: 30)
                 Stepper("Memory pressure sustained for \(alerts.memorySeconds) seconds", value: $alerts.memorySeconds, in: 30...600, step: 30)
                 Stepper("Repeat cooldown: \(alerts.cooldownMinutes) minutes", value: $alerts.cooldownMinutes, in: 5...120, step: 5)
+              }.padding(16)
             }
-            Section {
+            SMSettingsGroup("Individual workloads", footer: "Apps include their helpers. Resident memory can include shared pages; growth does not prove a leak. Per-workload limits override these thresholds.") {
+              VStack(alignment: .leading, spacing: 14) {
                 kindToggle("Sustained workload CPU", .processCPU)
                 Stepper("CPU: \(alerts.watchdogPolicy.processCPUPercent)% (100% = one core)", value: $alerts.watchdogPolicy.processCPUPercent, in: 20...800, step: 10)
                 Stepper("CPU / memory limit duration: \(Int(alerts.watchdogPolicy.processSeconds)) seconds", value: $alerts.watchdogPolicy.processSeconds, in: 60...900, step: 30)
@@ -415,23 +425,19 @@ struct LoadAlertSettingsView: View {
                 kindToggle("Substantial memory growth", .memoryGrowth)
                 Stepper("Growth: \(alerts.watchdogPolicy.growthMB) MB and at least 50%", value: $alerts.watchdogPolicy.growthMB, in: 128...8192, step: 128)
                 Stepper("Growth window: \(Int(alerts.watchdogPolicy.growthSeconds / 60)) minutes", value: $alerts.watchdogPolicy.growthSeconds, in: 120...900, step: 60)
-            } header: {
-                Text("Individual workloads")
-            } footer: {
-                Text("Apps include their helpers. Resident memory can include shared pages; growth does not prove a leak. Per-workload limits override these thresholds.")
+              }.padding(16)
             }
-            Section {
+            SMSettingsGroup("Fans & heat", footer: "Fan alerts need readable RPM and a reported maximum. Missing sensors remain unavailable. Thermal alerts identify macOS pressure, not a proven heating app or clock throttle.") {
+              VStack(alignment: .leading, spacing: 14) {
                 kindToggle("Sustained serious or critical thermal pressure", .thermal)
                 Stepper("Thermal duration: \(Int(alerts.watchdogPolicy.thermalSeconds)) seconds", value: $alerts.watchdogPolicy.thermalSeconds, in: 30...600, step: 30)
                 kindToggle("Sustained high measured fan speed", .fans)
                 Stepper("Fan speed: \(alerts.watchdogPolicy.fanPercent)% of reported maximum", value: $alerts.watchdogPolicy.fanPercent, in: 50...100, step: 5)
                 Stepper("Fan duration: \(Int(alerts.watchdogPolicy.fanSeconds)) seconds", value: $alerts.watchdogPolicy.fanSeconds, in: 60...600, step: 30)
-            } header: {
-                Text("Fans & heat")
-            } footer: {
-                Text("Fan alerts need readable RPM and a reported maximum. Missing sensors remain unavailable. Thermal alerts identify macOS pressure, not a proven heating app or clock throttle.")
+              }.padding(16)
             }
-        }.formStyle(.grouped)
+          }.padding(20)
+        }.scrollContentBackground(.hidden)
     }
 
     private func kindToggle(_ title: String, _ kind: LoadAlert.Kind) -> some View {
@@ -442,9 +448,11 @@ struct LoadAlertSettingsView: View {
     }
 
     private var workloads: some View {
-        Form {
-            Section {
-                TextField("Find a running app or process", text: $workloadSearch)
+        ScrollView {
+          VStack(alignment: .leading, spacing: 24) {
+            SMSettingsGroup("Custom limits", footer: "Custom limits enable both CPU and resident-memory alerts using the duration on the Alerts tab. Limits and mutes follow the app, executable or agent provider across launches; sustained evidence always starts fresh.") {
+              VStack(alignment: .leading, spacing: 14) {
+                SMSearchField("Find a running app or process", text: $workloadSearch)
                 Menu("Add a running workload") {
                     ForEach(runningWorkloads, id: \.ignoreKey) { workload in
                         Button(workload.name) {
@@ -470,12 +478,10 @@ struct LoadAlertSettingsView: View {
                         }.padding(.vertical, 4)
                     }
                 }
-            } header: {
-                Text("Custom limits")
-            } footer: {
-                Text("Custom limits enable both CPU and resident-memory alerts using the duration on the Alerts tab. Limits and mutes follow the app, executable or agent provider across launches; sustained evidence always starts fresh.")
+              }.padding(16)
             }
-            Section("Muted workloads") {
+            SMSettingsGroup("Muted workloads") {
+              VStack(alignment: .leading, spacing: 14) {
                 Menu("Mute a running workload") {
                     ForEach(runningWorkloads, id: \.ignoreKey) { workload in
                         Button(workload.name) { alerts.ignore(workload.ignoreKey, name: workload.name) }
@@ -489,8 +495,10 @@ struct LoadAlertSettingsView: View {
                         Button("Unmute") { alerts.unignore(key) }
                     }
                 }
+              }.padding(16)
             }
-        }.formStyle(.grouped)
+          }.padding(20)
+        }.scrollContentBackground(.hidden)
     }
 
     private var runningWorkloads: [LoadContributor] {
@@ -510,10 +518,19 @@ struct LoadAlertSettingsView: View {
     }
 
     private var activity: some View {
-        Form {
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
                 Text("Last 50 alerts from this session. Summaries stay in memory and disappear when the app quits.").foregroundStyle(.secondary)
-                if alerts.recent.isEmpty { Text("No sustained problems detected while alerts were enabled.") }
+                if alerts.recent.isEmpty {
+                    HStack(spacing: 20) {
+                        DaddyArtwork(topic: 7).frame(width: 120, height: 120)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("A quieter Mac.").font(.custom(PerformanceTheme.palette.displayFont, size: 23).weight(.semibold))
+                            Text("No sustained problems detected while alerts were enabled.")
+                                .foregroundStyle(PerformanceTheme.secondaryInk).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }.padding(.vertical, 20)
+                }
                 ForEach(alerts.recent) { item in
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
@@ -528,7 +545,7 @@ struct LoadAlertSettingsView: View {
                     }.padding(.vertical, 6)
                 }
                 Button("Clear recent alerts", action: alerts.clearRecent).disabled(alerts.recent.isEmpty)
-            }
-        }.formStyle(.grouped)
+            }.padding(20)
+        }.scrollContentBackground(.hidden)
     }
 }

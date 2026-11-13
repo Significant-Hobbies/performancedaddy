@@ -5,8 +5,8 @@ enum PerformanceTheme {
     // Daddy series: exact StorageDaddy Tints and app-owned black surfaces.
     static let fog = DaddyPalette.canvas
     static let surface = DaddyPalette.canvas
-    static let ink = DaddyPalette.ink
-    static let secondaryInk = DaddyPalette.secondaryInk
+    static let ink = Color(red: 0.94, green: 0.96, blue: 0.95)
+    static let secondaryInk = Color(red: 0.59, green: 0.64, blue: 0.61)
     static let coral = DaddyPalette.coral
     static let coralWash = coral.opacity(0.12)
     static let mintInk = DaddyPalette.mint
@@ -15,7 +15,7 @@ enum PerformanceTheme {
     static let blue = DaddyPalette.blue
     static let cyan = DaddyPalette.cyan
     static let amber = DaddyPalette.amber
-    static let divider = secondaryInk.opacity(0.18)
+    static let divider = Color.white.opacity(0.10)
 
     /// Library roles with Daddy surfaces and measured-evidence semantics.
     static let palette: SMPalette = {
@@ -23,7 +23,7 @@ enum PerformanceTheme {
             Color(.sRGB, red: 107 / 255, green: 201 / 255, blue: 158 / 255, opacity: 1),
             foreground: .black)
         palette.background = fog
-        palette.surface = surface
+        palette.surface = Color(red: 0.025, green: 0.032, blue: 0.028)
         palette.card = surface
         palette.foreground = ink
         palette.mutedForeground = secondaryInk
@@ -34,7 +34,7 @@ enum PerformanceTheme {
         palette.destructive = coral
         palette.accent = mintInk.opacity(0.11)
         palette.radius = 10
-        palette.displayFont = palette.sansFont
+        palette.displayFont = "Figtree"
         palette.input = divider
         palette.displayWeight = 600
         palette.displayTracking = -0.025
@@ -60,12 +60,14 @@ struct PerformancePageHeader<Actions: View>: View {
     let title: String
     let subtitle: String
     let icon: String
+    let showsArtwork: Bool
     private let actions: Actions
 
-    init(title: String, subtitle: String, icon: String, @ViewBuilder actions: () -> Actions) {
+    init(title: String, subtitle: String, icon: String, showsArtwork: Bool = true, @ViewBuilder actions: () -> Actions) {
         self.title = title
         self.subtitle = subtitle
         self.icon = icon
+        self.showsArtwork = showsArtwork
         self.actions = actions()
     }
 
@@ -73,13 +75,21 @@ struct PerformancePageHeader<Actions: View>: View {
         SMWorkspaceHeader(title, subtitle: subtitle) {
             HStack(spacing: 10) {
                 actions
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(PerformanceTheme.mintInk)
-                    .frame(width: 42, height: 42)
-                    .background(PerformanceTheme.palette.brandSoft, in: RoundedRectangle(cornerRadius: 12))
-                    .accessibilityHidden(true)
+                if showsArtwork {
+                    DaddyArtwork(topic: artworkTopic).frame(width: 64, height: 64)
+                }
             }
+        }
+    }
+
+    private var artworkTopic: Int {
+        switch icon {
+        case "network": 3
+        case "memorychip": 5
+        case "terminal": 8
+        case "doc.text.magnifyingglass": 1
+        case "lock.shield": 2
+        default: 0
         }
     }
 }
