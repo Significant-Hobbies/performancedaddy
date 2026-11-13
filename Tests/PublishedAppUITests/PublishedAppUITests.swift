@@ -125,7 +125,13 @@ final class PublishedAppUITests: XCTestCase {
             let content = workspace
             XCTAssertTrue(content.waitForExistence(timeout: 15), "The semantic workspace must exist")
             XCTAssertEqual(content.frame.width, 880, accuracy: 2, "Minimum supported content width")
-            XCTAssertEqual(content.frame.height, 800, accuracy: 2, "Minimum supported content layout height")
+            // SwiftUI's outer accessibility container includes the native title bar.
+            // Measure the destination canvas below the 52pt scope line instead.
+            XCTAssertTrue(workspaceContent.waitForExistence(timeout: 15))
+            XCTAssertEqual(workspaceContent.frame.height + 52, 800, accuracy: 2,
+                           "Minimum supported content layout height")
+            XCTAssertEqual(content.frame.height, window.frame.height, accuracy: 2,
+                           "The workspace AX container includes native window chrome")
         }
 
         // Freeze only the owned sampler after the startup and resize controls.
@@ -294,8 +300,13 @@ final class PublishedAppUITests: XCTestCase {
         if expectsPublishedOverflow {
             XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2)
         } else {
-            XCTAssertEqual(workspace.frame.height, 800, accuracy: 2,
+            XCTAssertTrue(workspaceContent.exists)
+            XCTAssertEqual(workspaceContent.frame.height + 52, 800, accuracy: 2,
                            "Every page retains the minimum content layout")
+            XCTAssertEqual(workspaceContent.frame.width, window.frame.width - 198, accuracy: 2,
+                           "Every page retains the available width beside the sidebar")
+            XCTAssertTrue(window.frame.insetBy(dx: -2, dy: -2).contains(workspaceContent.frame),
+                          "The destination canvas must fit inside the native window")
         }
         let name = "\(Int(window.frame.width))-" + page.lowercased().replacingOccurrences(of: " ", with: "-")
         try window.screenshot().pngRepresentation.write(to: output.appendingPathComponent("\(name).png"))
@@ -333,6 +344,11 @@ final class PublishedAppUITests: XCTestCase {
     }
 
     @MainActor
+    private var workspaceContent: XCUIElement {
+        app.descendants(matching: .any)["workspace-content"]
+    }
+
+    @MainActor
     private func record(_ stage: String, extra: [String: Any] = [:]) throws {
         var observation = extra
         observation["stage"] = stage
@@ -351,6 +367,11 @@ final class PublishedAppUITests: XCTestCase {
         if let app, !expectsPublishedOverflow, workspace.exists {
             let frame = workspace.frame
             observation["workspace"] = ["width": frame.width, "height": frame.height]
+            if workspaceContent.exists {
+                observation["destinationCanvas"] = ["width": workspaceContent.frame.width,
+                                                     "height": workspaceContent.frame.height]
+                observation["contentLayoutHeight"] = workspaceContent.frame.height + 52
+            }
         }
         if let divider = app?.splitters.firstMatch, divider.exists {
             observation["contentLayoutHeight"] = divider.frame.height

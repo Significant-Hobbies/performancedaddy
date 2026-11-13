@@ -102,6 +102,8 @@ struct DashboardView: View {
             .background(PerformanceTheme.fog)
             .buttonStyle(SMMacButtonStyle())
             .clipped()
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("workspace-content")
             }
         }
         .accessibilityElement(children: .contain)
