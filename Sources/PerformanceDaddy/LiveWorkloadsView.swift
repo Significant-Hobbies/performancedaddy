@@ -80,6 +80,9 @@ struct LiveWorkloadsView: View {
         .onChange(of: model.selection) { _, selection in
             if selection.isEmpty { showingCompactInspector = false }
         }
+        .onChange(of: selectedProcess?.id) { _, identity in
+            if identity == nil { showingCompactInspector = false }
+        }
         }
     }
 
