@@ -21,7 +21,7 @@ struct DashboardView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .buttonStyle(SMButtonStyle(.outline, size: .compact))
+                .buttonStyle(SMMacButtonStyle())
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 220)
         } detail: {
             ZStack {
@@ -93,11 +93,11 @@ struct DashboardView: View {
                 }
             }
             .background(PerformanceTheme.fog)
-            .buttonStyle(SMButtonStyle(.outline, size: .compact))
+            .buttonStyle(SMMacButtonStyle())
             .clipped()
         }
         .sheet(item: $model.importedProfile) {
-            ImportedProfileView(profile: $0).buttonStyle(SMButtonStyle(.outline, size: .compact))
+            ImportedProfileView(profile: $0).buttonStyle(SMMacButtonStyle())
         }
         .sheet(isPresented: $model.preparingFollowUp) {
             if let report = model.report {
@@ -159,7 +159,7 @@ struct DashboardView: View {
             Button { destination = "Diagnose"; model.markSlowMoment() } label: {
                 Label("feels slow now", systemImage: "waveform.path.ecg").accessibilityLabel("Feels slow now")
                     .frame(maxWidth: .infinity).frame(height: 28)
-            }.buttonStyle(SMButtonStyle(.brand, size: .compact))
+            }.buttonStyle(SMMacButtonStyle(.primary))
                 .help("Mark this moment, keep up to two minutes of preceding observations, and record another 30 seconds. Read-only.")
             Picker("Symptom", selection: $model.selectedSymptom) {
                 ForEach(ReportedSymptom.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -282,7 +282,7 @@ private struct StartDiagnosisView: View {
 
             Button("start \(selectedLength.rawValue) check", action: onStart)
                 .accessibilityLabel("Start \(selectedLength.rawValue) check")
-                .buttonStyle(SMButtonStyle(.brand, size: .compact))
+                .buttonStyle(SMMacButtonStyle(.primary))
 
             if let savedBaseline {
                 Text("This check will compare with your saved baseline from \(savedBaseline.capture.startedAt.formatted(date: .abbreviated, time: .shortened)). Use a similar workload for a meaningful comparison.")
@@ -475,7 +475,7 @@ private struct ReportView: View {
                         HStack(spacing: 12) {
                             Button("record follow-up", action: onVerify)
                                 .accessibilityLabel("Record follow-up")
-                                .buttonStyle(SMButtonStyle(.brand, size: .compact))
+                                .buttonStyle(SMMacButtonStyle(.primary))
                             if explanation.reviewSearch != nil {
                                 Button("review workload", action: onInspect)
                             }

@@ -14,7 +14,7 @@ struct TopContributorsView: View {
             HStack {
                 Text(title).font(.headline).accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("Done") { dismiss() }.buttonStyle(SMButtonStyle(.outline, size: .compact))
+                Button("Done") { dismiss() }.buttonStyle(SMMacButtonStyle())
                     .keyboardShortcut(.cancelAction)
             }
             let rows = model.topContributors(for: metric)

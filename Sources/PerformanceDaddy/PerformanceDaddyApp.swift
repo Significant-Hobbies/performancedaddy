@@ -57,18 +57,18 @@ struct PerformanceDaddyApp: App {
         WindowGroup(id: "agent-wall") {
             AgentWallView(model: live)
                 .performanceTheme(PerformanceTheme.palette)
-                .buttonStyle(SMButtonStyle(.outline, size: .compact))
+                .buttonStyle(SMMacButtonStyle())
                 .frame(minWidth: 520, minHeight: 360)
-                .background(MonitoringSurface(model: live))
-                .task { live.start() }
+                .background(MonitoringSurface(model: live, tracksSampling: !PerformanceStartupCheck.enabled))
+                .task { if !PerformanceStartupCheck.enabled { live.start() } }
         }
         .defaultSize(width: 1080, height: 720)
         .windowStyle(.titleBar)
         MenuBarExtra {
             AgentStatusMenu(model: live, diagnosis: diagnosis, updates: updates, login: login)
                 .performanceTheme(PerformanceTheme.palette)
-                .buttonStyle(SMButtonStyle(.outline, size: .compact))
-                .background(MonitoringSurface(model: live))
+                .buttonStyle(SMMacButtonStyle())
+                .background(MonitoringSurface(model: live, tracksSampling: !PerformanceStartupCheck.enabled))
         } label: {
             AgentStatusMenuBarLabel(model: live, alerts: alerts)
                 .onAppear(perform: reviewActiveWorkBeforeQuit)
@@ -77,7 +77,7 @@ struct PerformanceDaddyApp: App {
         Settings {
             LoadAlertSettingsView(alerts: alerts, live: live)
                 .performanceTheme(PerformanceTheme.palette)
-                .buttonStyle(SMButtonStyle(.outline, size: .compact))
+                .buttonStyle(SMMacButtonStyle())
         }
     }
 

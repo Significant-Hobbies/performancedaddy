@@ -6,17 +6,17 @@ struct AppResponseSettingsView: View {
     @ObservedObject var live: LiveViewModel
     var body: some View {
         DisclosureGroup {
-            VStack(alignment: .leading, spacing: 10) {
-                Toggle("Probe the last-used app's response", isOn: $live.appResponseEnabled)
-                Text("Optional read-only Accessibility request, at most once every five seconds. Only the app name, version, completion status and timing are retained. No screen content, text or global keystrokes are read.")
-                    .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
-                if live.appResponseEnabled && !live.appResponsePermissionAvailable {
-                    Button("allow Accessibility access…", action: live.requestAppResponsePermission)
-                    Text("Enable PerformanceDaddy in macOS Accessibility settings. Recording still works without access; app-response evidence will be unavailable.")
-                        .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+            SMSettingsGroup(footer: "Main-queue and local input dispatch measurements cover PerformanceDaddy only. An app-service reply does not measure typing-to-display or frame latency.") {
+                SMSettingsRow("Probe the last-used app's response", subtitle: "Optional read-only Accessibility request, at most once every five seconds. Only the app name, version, completion status and timing are retained. No screen content, text or global keystrokes are read.") {
+                    Toggle("Probe the last-used app's response", isOn: $live.appResponseEnabled)
+                        .labelsHidden().toggleStyle(.checkbox)
                 }
-                Text("Main-queue and local input dispatch measurements cover PerformanceDaddy only. An app-service reply does not measure typing-to-display or frame latency.")
-                    .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                if live.appResponseEnabled && !live.appResponsePermissionAvailable {
+                    Divider().padding(.horizontal, 16)
+                    SMSettingsRow("Accessibility access", subtitle: "Enable PerformanceDaddy in macOS Accessibility settings. Recording still works without access; app-response evidence will be unavailable.") {
+                        Button("allow Accessibility access…", action: live.requestAppResponsePermission)
+                    }
+                }
             }.padding(.top, 8)
         } label: {
             Text("App response probe: \(live.appResponseEnabled ? live.appResponsePermissionAvailable ? "on" : "needs Accessibility access" : "off")")
@@ -66,10 +66,10 @@ struct FollowUpPreparationView: View {
                 Button("cancel", action: onCancel)
                 Spacer()
                 Button("start follow-up") { onRecord(task, change, detail, sameTask) }
-                    .buttonStyle(SMButtonStyle(.brand, size: .compact))
+                    .buttonStyle(SMMacButtonStyle(.primary))
                     .disabled(!sameTask || task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.padding(28).frame(width: 570)
-            .performanceTheme(PerformanceTheme.palette).buttonStyle(SMButtonStyle(.outline, size: .compact))
+            .performanceTheme(PerformanceTheme.palette).buttonStyle(SMMacButtonStyle())
     }
 }

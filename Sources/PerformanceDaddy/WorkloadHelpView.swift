@@ -24,7 +24,7 @@ struct WorkloadHelpView: View {
             }
         }.padding(20).frame(width: 410, height: 500)
             .foregroundStyle(PerformanceTheme.ink).background(PerformanceTheme.fog)
-            .preferredColorScheme(.dark).buttonStyle(SMButtonStyle(.outline, size: .compact))
+            .preferredColorScheme(.dark).buttonStyle(SMMacButtonStyle())
     }
     private func entry(_ title: String, _ detail: String) -> some View {
         VStack(alignment: .leading, spacing: 5) {

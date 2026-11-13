@@ -59,6 +59,7 @@ struct AgentStatusMenuBarLabel: View {
     var body: some View {
         AgentStatusSummaryLabel(summary: status.summary).equatable()
         .onAppear {
+            guard !PerformanceStartupCheck.enabled else { return }
             // The menu bar label lives for the whole session, unlike any window.
             alerts.attach(to: model) { openWindow(id: "main") }
             model.start()
@@ -194,9 +195,9 @@ struct AgentStatusMenu: View {
 
             HStack(spacing: 10) {
                 Button("Open Agent Sessions") { open(id: "agent-wall") }
-                    .buttonStyle(SMButtonStyle(.brand, size: .compact))
+                    .buttonStyle(SMMacButtonStyle(.primary))
                 Button("Open App") { open(id: "main") }
-                    .buttonStyle(SMButtonStyle(.outline, size: .compact))
+                    .buttonStyle(SMMacButtonStyle())
                 Spacer(minLength: 0)
                 Menu {
                     Button(model.paused ? "Resume monitoring" : "Pause monitoring") { model.paused.toggle() }
@@ -233,7 +234,7 @@ struct AgentStatusMenu: View {
         .frame(width: 380)
         .background(PerformanceTheme.fog)
         .preferredColorScheme(.dark)
-        .task { model.start() }
+        .task { if !PerformanceStartupCheck.enabled { model.start() } }
     }
 
     private func countLabel(_ title: String, count: Int, color: Color) -> some View {

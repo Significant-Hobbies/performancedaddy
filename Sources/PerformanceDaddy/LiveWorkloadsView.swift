@@ -51,17 +51,9 @@ struct LiveWorkloadsView: View {
     }
 
     private var header: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top) { heading; headerActions }
-            VStack(alignment: .leading, spacing: 12) {
-                heading
-                HStack { headerActions }
-            }
+        PerformancePageHeader(title: page.rawValue, subtitle: page.subtitle, icon: page.icon) {
+            HStack(spacing: 8) { headerActions }
         }
-    }
-
-    private var heading: some View {
-        PerformancePageHeader(title: page.rawValue, subtitle: page.subtitle, icon: page.icon)
     }
 
     @ViewBuilder private var headerActions: some View {
@@ -159,20 +151,10 @@ struct LiveWorkloadsView: View {
         }
     }
     private var search: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").foregroundStyle(PerformanceTheme.secondaryInk)
-            TextField("Search name, PID, project or port", text: $model.search)
-                .textFieldStyle(.plain)
-                .focused($searchFocused)
-                .accessibilityLabel("Search processes, projects and ports")
-                .help("Search by process name, PID, role, app, project or port. Command-F focuses search.")
-            if !model.search.isEmpty {
-                Button { model.search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                    .buttonStyle(.plain).accessibilityLabel("Clear search").help("Clear search")
-            }
-        }.padding(.horizontal, 10).padding(.vertical, 8).frame(minWidth: 180)
-            .background(Color.black, in: RoundedRectangle(cornerRadius: 7))
-            .overlay(RoundedRectangle(cornerRadius: 7).stroke(PerformanceTheme.mintInk.opacity(0.35)))
+        SMSearchField("Search name, PID, project or port", text: $model.search, focus: $searchFocused,
+                      accessibilityLabel: "Search processes, projects and ports")
+            .frame(minWidth: 180)
+            .help("Search by process name, PID, role, app, project or port. Command-F focuses search.")
             .background {
                 Button("find process") { searchFocused = true }.accessibilityLabel("Find process").keyboardShortcut("f", modifiers: .command).hidden()
             }
@@ -587,7 +569,7 @@ struct LiveWorkloadsView: View {
               Button { showingResourceEvidence = true } label: {
                   Label("Memory & thermals", systemImage: "thermometer.medium")
               }
-              .buttonStyle(SMButtonStyle(.outline, size: .compact))
+              .buttonStyle(SMMacButtonStyle())
               .popover(isPresented: $showingResourceEvidence, arrowEdge: .top) {
                   ResourceEvidenceView(snapshot: model.snapshot, paused: model.paused)
               }
@@ -637,7 +619,7 @@ private struct StopReviewView: View {
                 }
             }
         }.padding(24).frame(width: 520).background(Color.black)
-            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(SMButtonStyle(.outline, size: .compact))
+            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(SMMacButtonStyle())
     }
 }
 

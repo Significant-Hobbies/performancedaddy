@@ -27,8 +27,7 @@ struct ConfigurationView: View {
     var body: some View {
         GeometryReader { geometry in
         VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top) {
-                PerformancePageHeader(title: "Configuration", subtitle: "Find settings for your local shell and agent tools.", icon: "doc.text.magnifyingglass")
+            PerformancePageHeader(title: "Configuration", subtitle: "Find settings for your local shell and agent tools.", icon: "doc.text.magnifyingglass") {
                 Button(scanning ? "Scanning…" : "Refresh") { Task { await refresh() } }
                     .disabled(scanning)
             }
@@ -40,15 +39,8 @@ struct ConfigurationView: View {
             }.padding(.vertical, 12)
                 .overlay(alignment: .top) { Rectangle().fill(PerformanceTheme.divider).frame(height: 1) }
                 .overlay(alignment: .bottom) { Rectangle().fill(PerformanceTheme.divider).frame(height: 1) }
-            HStack {
-                Image(systemName: "magnifyingglass").foregroundStyle(PerformanceTheme.secondaryInk)
-                TextField("Search file, path, tool or status", text: $search).textFieldStyle(.plain)
-                    .accessibilityLabel("Search configuration files")
-                if !search.isEmpty {
-                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).accessibilityLabel("Clear configuration search")
-                }
-            }.padding(10).overlay(RoundedRectangle(cornerRadius: 7).stroke(PerformanceTheme.mintInk.opacity(0.35)))
+            SMSearchField("Search file, path, tool or status", text: $search,
+                          accessibilityLabel: "Search configuration files")
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     sortHeader("FILE", .path).frame(maxWidth: .infinity, alignment: .leading)
