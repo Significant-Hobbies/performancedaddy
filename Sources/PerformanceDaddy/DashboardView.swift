@@ -87,9 +87,9 @@ struct DashboardView: View {
                             }
                           }
                         }.padding(.horizontal, 30).padding(.top, 24)
-                        AppResponseSettingsView(live: live).padding(.horizontal, 28).padding(.vertical, 10)
+                        AppResponseSettingsView(live: live).padding(.horizontal, 30).padding(.vertical, 10)
                         if let error = model.errorMessage, model.report != nil {
-                            Text(error).font(.callout).foregroundStyle(PerformanceTheme.coral).padding(.horizontal, 28)
+                            Text(error).font(.callout).foregroundStyle(PerformanceTheme.coral).padding(.horizontal, 30)
                         }
                         ScrollView {
                             diagnosisContent.frame(maxWidth: .infinity)
@@ -526,7 +526,7 @@ private struct ReportView: View {
                 }
 
             }
-            .padding(28)
+            .padding(30)
             .frame(maxWidth: 1_080)
             .frame(maxWidth: .infinity)
         }

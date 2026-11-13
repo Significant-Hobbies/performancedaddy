@@ -93,7 +93,7 @@ struct ConfigurationView: View {
                     Text("Metadata: \(scan.sampledAt.formatted(date: .omitted, time: .standard))")
                 }.font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
             }
-        }.padding(28).frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+        }.padding(30).frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
             .background(PerformanceTheme.fog)
             .task { if scan == nil { await refresh() } }
         }

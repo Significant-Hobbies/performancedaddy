@@ -29,7 +29,7 @@ struct FanInvestigationView: View {
                     Text(error).font(.caption).foregroundStyle(PerformanceTheme.amber)
                 }
             }
-            .padding(28)
+            .padding(30)
             .frame(width: min(1_040, geometry.size.width), alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }

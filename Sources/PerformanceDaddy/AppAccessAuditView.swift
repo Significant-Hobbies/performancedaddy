@@ -177,7 +177,7 @@ struct AppAccessAuditView: View {
                 Text("\(userAgents) user agents · \(sharedAgents) all-user agents · \(systemDaemons) system daemons · Open at Login is reviewed in Settings")
                     .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
             }
-        }.padding(24)
+        }.padding(30)
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
             .background(PerformanceTheme.fog)
             .task {
