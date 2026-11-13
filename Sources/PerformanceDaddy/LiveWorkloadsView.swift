@@ -110,6 +110,15 @@ struct LiveWorkloadsView: View {
     }
 
     private var inspectorIntroduction: some View {
+        GeometryReader { geometry in
+            ScrollView {
+                inspectorIntroductionContent
+                    .frame(minHeight: geometry.size.height, alignment: .topLeading)
+            }
+        }
+    }
+
+    private var inspectorIntroductionContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("WORKLOAD DETAILS").font(.custom(PerformanceTheme.palette.sansFont, size: 10).weight(.medium))
                 .tracking(1.2).foregroundStyle(PerformanceTheme.secondaryInk)
