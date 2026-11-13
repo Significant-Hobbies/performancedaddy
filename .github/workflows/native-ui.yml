@@ -26,6 +26,8 @@ jobs:
       matrix:
         include:
           - app: source-candidate
+            width: 880
+          - app: source-candidate
             width: 980
           - app: source-candidate
             width: 1180

@@ -52,6 +52,8 @@ struct LiveWorkloadsView: View {
                     }
                     .frame(minHeight: 100, maxHeight: .infinity)
                     .layoutPriority(-1)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("workload-layout-wide")
                 } else {
                     VStack(spacing: 0) {
                         ZStack {
@@ -75,6 +77,8 @@ struct LiveWorkloadsView: View {
                             }.buttonStyle(SMMacButtonStyle()).padding(.top, 12)
                         }
                     }.frame(minHeight: 100, maxHeight: .infinity).layoutPriority(-1)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("workload-layout-compact")
                 }
             }
             footer

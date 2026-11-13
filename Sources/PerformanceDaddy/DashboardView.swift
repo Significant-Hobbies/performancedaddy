@@ -24,6 +24,8 @@ struct DashboardView: View {
     var body: some View {
         HStack(spacing: 0) {
             sidebar
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("workspace-sidebar")
             VStack(spacing: 0) {
                 SMWorkspaceScopeBar(LivePage(rawValue: destination) == nil ? "Investigation" : "Live diagnostics",
                                     systemImage: "waveform.path.ecg", detail: "Local to this Mac") {
@@ -102,6 +104,8 @@ struct DashboardView: View {
             .clipped()
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("performance-workspace")
         .sheet(item: $model.importedProfile) {
             ImportedProfileView(profile: $0).buttonStyle(SMMacButtonStyle())
         }

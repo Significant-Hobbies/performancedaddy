@@ -5,7 +5,7 @@ import SwiftUI
 import XCTest
 @testable import PerformanceDaddy
 
-/// Opt-in visible production page for coordinated screenshots, without live collection.
+/// Opt-in visible production page for coordinated screenshots, without starting the live-workload sampler.
 @MainActor
 final class SharedMacUIHostTests: XCTestCase {
     func testHoldProtectedFixturePageForNativeReview() async throws {
@@ -85,8 +85,8 @@ final class SharedMacUIHostTests: XCTestCase {
             "pid": getpid(), "windowNumber": window.windowNumber, "title": window.title,
             "page": isSettings ? "Settings" : page.rawValue, "fixtureProcesses": snapshot.processes.count,
             "contentWidth": width,
-            "allProcessActionsProtected": true, "liveSamplingStarted": false,
-            "scope": "Full production dashboard with protected fixture processes; services disabled",
+            "allProcessActionsProtected": true, "liveWorkloadSamplingStarted": false,
+            "scope": "Production dashboard with protected workloads; automatic startup disabled. Diagnosis actions remain live and must not be invoked",
             "settingsPreferences": "Isolated test suite; alerts never attached to live sampling",
             "holdSeconds": 120, "donePath": done.path
         ]
@@ -137,11 +137,15 @@ final class SharedMacUIHostTests: XCTestCase {
         ]
         if let text = ProcessInfo.processInfo.environment["PERFORMANCEDADDY_UI_HOST_ROWS"],
            let count = Int(text), (4...1_500).contains(count) {
-            processes += (3..<count).map { index in
-                LiveProcess(id: .init(pid: Int32(30_001 + index), started: started + UInt64(index) * 1_000_000),
-                            parent: 1, uid: protectedUID, name: "Protected fixture \(index + 1)",
-                            executable: "/fixtures/process-\(index + 1)", directory: "/fixtures/workspace-\(index + 1)",
-                            cpu: Double(index % 25) / 10, memory: UInt64(10 + index % 100) * 1_000_000)
+            for index in 3..<count {
+                let pid = Int32(30_001 + index)
+                let identity = ProcessIdentity(pid: pid, started: started + UInt64(index) * 1_000_000)
+                let memory = UInt64(10 + index % 100) * 1_000_000
+                let process = LiveProcess(id: identity, parent: 1, uid: protectedUID,
+                    name: "Protected fixture \(index + 1)", executable: "/fixtures/process-\(index + 1)",
+                    directory: "/fixtures/workspace-\(index + 1)", cpu: Double(index % 25) / 10,
+                    memory: memory)
+                processes.append(process)
             }
         }
         let system = SystemSample(timestamp: date, usedCPUCores: 2.1, memoryHeadroomRatio: 0.42,

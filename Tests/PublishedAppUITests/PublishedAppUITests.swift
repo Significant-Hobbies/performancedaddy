@@ -115,14 +115,18 @@ final class PublishedAppUITests: XCTestCase {
         try captureFinal()
         XCTAssertEqual(window.frame.width, minimum.width, accuracy: 2, "A second shrink must stay at the real minimum")
         XCTAssertEqual(window.frame.height, minimum.height, accuracy: 2, "A second shrink must stay at the real minimum")
-        let content = app.splitGroups.firstMatch
-        XCTAssertTrue(content.exists, "Inspect the native navigation content, separately from window chrome")
-        XCTAssertEqual(content.frame.width, 980, accuracy: 2, "Minimum supported content width")
-        // The native split-group includes the title-bar area. Its divider spans
-        // the 800-point content layout; the observed full window is 852 high.
-        XCTAssertTrue(app.splitters.firstMatch.exists)
-        XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2,
-                       "Minimum supported content layout height")
+        if expectsPublishedOverflow {
+            let content = app.splitGroups.firstMatch
+            XCTAssertTrue(content.exists)
+            XCTAssertEqual(content.frame.width, 980, accuracy: 2)
+            XCTAssertTrue(app.splitters.firstMatch.exists)
+            XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2)
+        } else {
+            let content = workspace
+            XCTAssertTrue(content.waitForExistence(timeout: 15), "The semantic workspace must exist")
+            XCTAssertEqual(content.frame.width, 880, accuracy: 2, "Minimum supported content width")
+            XCTAssertEqual(content.frame.height, 800, accuracy: 2, "Minimum supported content layout height")
+        }
 
         // Freeze only the owned sampler after the startup and resize controls.
         // Verify real pointer input through the resulting Resume control.
@@ -138,14 +142,14 @@ final class PublishedAppUITests: XCTestCase {
         resizeToWidth(window, width: minimumWindow.width)
         XCTAssertEqual(window.frame.width, minimumWindow.width, accuracy: 2)
 
-        if ProcessInfo.processInfo.environment["PD_EXPECT_NAVIGATION_OVERFLOW"] == "true" {
+        if expectsPublishedOverflow {
             try open("Diagnose", window: window)
             try capture("Diagnose")
             XCTFail("The known published navigation overflow must fail its layout assertion")
             return
         }
 
-        let widths = (ProcessInfo.processInfo.environment["PD_UI_WIDTHS"] ?? "980")
+        let widths = (ProcessInfo.processInfo.environment["PD_UI_WIDTHS"] ?? "880")
             .split(separator: ",").compactMap { Double($0) }
         XCTAssertFalse(widths.isEmpty)
         for width in widths {
@@ -175,6 +179,11 @@ final class PublishedAppUITests: XCTestCase {
             for title in ["Resume", "Refresh processes", "Help with processes and measurements", "Stop…"] {
                 try reachable(control(title), window: window)
             }
+            let wide = window.frame.width - 198 >= 900
+            let layout = app.descendants(matching: .any)[wide ? "workload-layout-wide" : "workload-layout-compact"]
+            XCTAssertTrue(layout.waitForExistence(timeout: 15), "Workload layout must match the available workspace width")
+            XCTAssertFalse(app.descendants(matching: .any)[wide ? "workload-layout-compact" : "workload-layout-wide"].exists,
+                           "Only the appropriate inspector presentation is exposed")
             try capture(page)
         }
         try open("Fans & heat", window: window)
@@ -282,25 +291,45 @@ final class PublishedAppUITests: XCTestCase {
                        "Page navigation must not enlarge the minimum window")
         XCTAssertEqual(window.frame.height, minimumWindow.height, accuracy: 2,
                        "Page navigation must not enlarge the minimum window")
-        XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2,
-                       "Every page retains the minimum content layout")
+        if expectsPublishedOverflow {
+            XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2)
+        } else {
+            XCTAssertEqual(workspace.frame.height, 800, accuracy: 2,
+                           "Every page retains the minimum content layout")
+        }
         let name = "\(Int(window.frame.width))-" + page.lowercased().replacingOccurrences(of: " ", with: "-")
         try window.screenshot().pngRepresentation.write(to: output.appendingPathComponent("\(name).png"))
         try app.debugDescription.write(to: output.appendingPathComponent("\(name)-ax.txt"),
                                        atomically: true, encoding: .utf8)
         try record("layout-observed", extra: ["page": page])
-        let content = app.splitGroups.firstMatch
+        let content = expectsPublishedOverflow ? app.splitGroups.firstMatch : workspace
         XCTAssertTrue(content.exists)
-        XCTAssertLessThanOrEqual(content.frame.height, window.frame.height + 2,
-                                 "Navigation split group must fit inside the window")
-        XCTAssertTrue(window.frame.insetBy(dx: -2, dy: -2).contains(content.frame),
-                      "Navigation split group must fit inside the window")
+        // Keep this exact legacy failure message for the unchanged published negative control.
+        let boundsMessage = expectsPublishedOverflow
+            ? "Navigation split group must fit inside the window" : "Workspace must fit inside the window"
+        XCTAssertLessThanOrEqual(content.frame.height, window.frame.height + 2, boundsMessage)
+        XCTAssertTrue(window.frame.insetBy(dx: -2, dy: -2).contains(content.frame), boundsMessage)
+        if !expectsPublishedOverflow {
+            let sidebar = app.descendants(matching: .any)["workspace-sidebar"]
+            XCTAssertTrue(sidebar.exists)
+            XCTAssertEqual(sidebar.frame.width, 198, accuracy: 2, "The sidebar keeps its intended width")
+            XCTAssertTrue(window.frame.insetBy(dx: -2, dy: -2).contains(sidebar.frame))
+        }
         for title in ["Processes", "Ports", "Agent sessions", "Memory", "Fans & heat",
                       "App access", "Configuration", "Diagnose"] {
             let button = app.buttons.matching(NSPredicate(format: "label ==[c] %@", title)).firstMatch
             try reachable(button, window: window)
         }
         try record("page-qualified", extra: ["page": page])
+    }
+
+    private var expectsPublishedOverflow: Bool {
+        ProcessInfo.processInfo.environment["PD_EXPECT_NAVIGATION_OVERFLOW"] == "true"
+    }
+
+    @MainActor
+    private var workspace: XCUIElement {
+        app.descendants(matching: .any)["performance-workspace"]
     }
 
     @MainActor
@@ -318,6 +347,10 @@ final class PublishedAppUITests: XCTestCase {
         }
         if let content = app?.splitGroups.firstMatch, content.exists {
             observation["navigationSplitGroup"] = ["width": content.frame.width, "height": content.frame.height]
+        }
+        if let app, !expectsPublishedOverflow, workspace.exists {
+            let frame = workspace.frame
+            observation["workspace"] = ["width": frame.width, "height": frame.height]
         }
         if let divider = app?.splitters.firstMatch, divider.exists {
             observation["contentLayoutHeight"] = divider.frame.height
