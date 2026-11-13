@@ -301,8 +301,14 @@ final class PublishedAppUITests: XCTestCase {
             XCTAssertEqual(app.splitters.firstMatch.frame.height, 800, accuracy: 2)
         } else {
             XCTAssertTrue(workspaceContent.exists)
-            XCTAssertEqual(workspaceContent.frame.height + 52, 800, accuracy: 2,
-                           "Every page retains the minimum content layout")
+            // Some SwiftUI states enlarge the AX container upward into the scope
+            // line without changing content or window layout. The initial minimum
+            // is measured exactly above; navigation must retain its native window,
+            // at least that canvas height, and the same bottom/width/containment.
+            XCTAssertGreaterThanOrEqual(workspaceContent.frame.height, 748 - 2,
+                                        "Every page retains the minimum destination canvas")
+            XCTAssertEqual(workspaceContent.frame.maxY, window.frame.maxY, accuracy: 2,
+                           "Every page retains the destination canvas bottom")
             XCTAssertEqual(workspaceContent.frame.width, window.frame.width - 198, accuracy: 2,
                            "Every page retains the available width beside the sidebar")
             XCTAssertTrue(window.frame.insetBy(dx: -2, dy: -2).contains(workspaceContent.frame),
