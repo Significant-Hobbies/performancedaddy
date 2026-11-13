@@ -56,6 +56,7 @@ struct PerformanceDaddyApp: App {
         }
         WindowGroup(id: "agent-wall") {
             AgentWallView(model: live)
+                .smWorkspaceWindowChrome()
                 .performanceTheme(PerformanceTheme.palette)
                 .buttonStyle(SMMacButtonStyle())
                 .frame(minWidth: 520, minHeight: 360)

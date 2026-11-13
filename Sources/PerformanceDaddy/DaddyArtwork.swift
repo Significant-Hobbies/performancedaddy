@@ -3,10 +3,11 @@ import SwiftUI
 
 /// Original Daddy-series assets reused unchanged with the owner's approval.
 struct DaddyArtwork: View {
+    static let maximumSheetPixels = 864
     var brand = false
     var topic = 5
     private static let mark = DecodedArtwork.image(url: DaddyResources.url(forResource: "PerformanceDaddy"), maximumPixels: 128)
-    private static let sheet = DecodedArtwork.image(url: DaddyResources.url(forResource: "PageDoodles"), maximumPixels: 432)
+    private static let sheet = DecodedArtwork.image(url: DaddyResources.url(forResource: "PageDoodles"), maximumPixels: maximumSheetPixels)
     var body: some View {
         GeometryReader { geometry in
             if brand, let image = Self.mark {

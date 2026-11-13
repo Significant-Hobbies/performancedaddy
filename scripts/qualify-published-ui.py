@@ -188,7 +188,7 @@ def export_local_evidence(out):
             source = (destination / attachment["exportedFileName"]).resolve()
             if (Path(name).name != name or source.parent != destination.resolve()
                     or not (name in {"ui-observations.json", "final.png", "final-ax.txt"}
-                            or name.startswith(("980-", "1180-", "1440-")))):
+                            or name.startswith(("880-", "980-", "1180-", "1440-")))):
                 continue
             if name in seen:
                 continue
@@ -210,7 +210,7 @@ def main():
                         help="Qualify only a private source candidate on this Mac without changing display modes")
     parser.add_argument("--expect-navigation-overflow", action="store_true",
                         help="Require the known published-build navigation failure as a negative control")
-    parser.add_argument("--window-width", type=int, choices=[980, 1180, 1440],
+    parser.add_argument("--window-width", type=int, choices=[880, 980, 1180, 1440],
                         help="Qualify one candidate width per isolated CI job")
     args = parser.parse_args()
     if args.window_width is not None and not args.candidate:
@@ -232,7 +232,7 @@ def main():
         raise RuntimeError("GUI execution is restricted to an ephemeral GitHub Mac")
     out.mkdir(parents=True, exist_ok=False, mode=0o700)
     widths = ([args.window_width] if args.window_width is not None
-              else [980, 1180, 1440] if args.candidate else [980])
+              else [880, 980, 1180, 1440] if args.candidate else [980])
     report = {"scope": "Window bounds, all sidebar navigation and selected essential controls",
               "appKind": "source-candidate" if args.candidate else "published-0.2.20-build25",
               "expectedNavigationOverflow": args.expect_navigation_overflow,

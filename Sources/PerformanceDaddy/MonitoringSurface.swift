@@ -94,7 +94,7 @@ struct DashboardWindowContent: View {
                 Color.clear
             }
         }
-        .frame(minWidth: 980, minHeight: 800)
+        .frame(minWidth: 880, minHeight: 800)
         .background(MonitoringSurface(model: live, tracksSampling: !PerformanceStartupCheck.enabled,
                                       onWindowOpen: { windowOpen = $0 }))
     }

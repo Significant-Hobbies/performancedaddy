@@ -5,7 +5,7 @@ import SwiftUI
 import XCTest
 @testable import PerformanceDaddy
 
-/// Opt-in visible production page for coordinated screenshots, without live collection.
+/// Opt-in visible production page for coordinated screenshots, without starting the live-workload sampler.
 @MainActor
 final class SharedMacUIHostTests: XCTestCase {
     func testHoldProtectedFixturePageForNativeReview() async throws {
@@ -23,9 +23,16 @@ final class SharedMacUIHostTests: XCTestCase {
         guard !FileManager.default.fileExists(atPath: ready.path),
               !FileManager.default.fileExists(atPath: done.path) else { return }
         let page = try XCTUnwrap(LivePage(rawValue: environment["PERFORMANCEDADDY_UI_HOST_PAGE"] ?? "Processes"))
-        let width = Double(environment["PERFORMANCEDADDY_UI_HOST_WIDTH"] ?? "960") ?? 960
-        XCTAssertTrue((760...1_440).contains(width), "Keep the fixture host within supported review widths")
-        guard (760...1_440).contains(width) else { return }
+        let surface = environment["PERFORMANCEDADDY_UI_HOST_SURFACE"] ?? "dashboard"
+        XCTAssertTrue(["dashboard", "settings"].contains(surface))
+        guard ["dashboard", "settings"].contains(surface) else { return }
+        let isSettings = surface == "settings"
+        let products = Bundle(for: Self.self).bundleURL.deletingLastPathComponent()
+        let fonts = Bundle(url: products.appendingPathComponent("SaaSMakerUI_SaaSMakerUI.bundle"))
+        XCTAssertTrue(PerformanceUIResources.registerFonts(in: fonts), "Review uses the actual bundled typefaces")
+        let width = isSettings ? 660 : Double(environment["PERFORMANCEDADDY_UI_HOST_WIDTH"] ?? "960") ?? 960
+        XCTAssertTrue(isSettings || (880...1_440).contains(width), "Keep the fixture host within supported review widths")
+        guard isSettings || (880...1_440).contains(width) else { return }
         let snapshot = fixtureSnapshot()
         XCTAssertTrue(snapshot.processes.allSatisfy { $0.stopRestriction != nil })
 
@@ -41,13 +48,19 @@ final class SharedMacUIHostTests: XCTestCase {
         if environment["PERFORMANCEDADDY_UI_HOST_SELECTED"] == "1" {
             model.selection = [snapshot.processes[0].id]
         }
-        let host = NSHostingView(rootView: LiveWorkloadsView(model: model, page: page)
+        let alerts = LoadAlertCenter(defaults: preferences)
+        let content: AnyView = isSettings
+            ? AnyView(LoadAlertSettingsView(alerts: alerts, live: model))
+            : AnyView(DashboardView(model: DiagnosisViewModel(), live: model,
+                initialDestination: page.rawValue, startsServices: false))
+        let host = NSHostingView(rootView: content
             .performanceTheme(PerformanceTheme.palette)
             .buttonStyle(SMMacButtonStyle()))
-        let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: width, height: 800),
+        host.sizingOptions = []
+        let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: width, height: isSettings ? 740 : 800),
                               styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-        window.title = "PerformanceDaddy UI host · protected fixtures · \(page.rawValue)"
-        window.contentMinSize = NSSize(width: 760, height: 650)
+        window.title = "PerformanceDaddy UI host · protected fixtures · \(isSettings ? "Settings" : page.rawValue)"
+        window.contentMinSize = isSettings ? NSSize(width: 660, height: 740) : NSSize(width: 880, height: 800)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = .black
@@ -70,29 +83,47 @@ final class SharedMacUIHostTests: XCTestCase {
         window.displayIfNeeded()
         let metadata: [String: Any] = [
             "pid": getpid(), "windowNumber": window.windowNumber, "title": window.title,
-            "page": page.rawValue, "fixtureProcesses": snapshot.processes.count,
+            "page": isSettings ? "Settings" : page.rawValue, "fixtureProcesses": snapshot.processes.count,
             "contentWidth": width,
-            "allProcessActionsProtected": true, "liveSamplingStarted": false,
+            "allProcessActionsProtected": true, "liveWorkloadSamplingStarted": false,
+            "scope": "Production dashboard with protected workloads; automatic startup disabled. Diagnosis actions remain live and must not be invoked",
+            "settingsPreferences": "Isolated test suite; alerts never attached to live sampling",
             "holdSeconds": 120, "donePath": done.path
         ]
         try FileManager.default.createDirectory(at: ready.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
             .write(to: ready, options: .withoutOverwriting)
-        for _ in 0..<1_200 {
-            if FileManager.default.fileExists(atPath: done.path) { break }
-            try await Task.sleep(for: .milliseconds(100))
-        }
+        holdNativeEventLoop(until: done)
         let calls = await sampler.sampleCalls
         XCTAssertEqual(calls, 0, "The visual host must not start sampling")
         XCTAssertNil(model.review)
         XCTAssertTrue(model.outcomes.isEmpty)
     }
 
+    /// Accessibility needs AppKit's event loop, not only an async XCTest delay.
+    private func holdNativeEventLoop(until done: URL) {
+        let deadline = Date().addingTimeInterval(120)
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                guard FileManager.default.fileExists(atPath: done.path) || Date() >= deadline else { return }
+                NSApplication.shared.stop(nil)
+                if let event = NSEvent.otherEvent(with: .applicationDefined, location: .zero,
+                    modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                    windowNumber: 0, context: nil, subtype: 0, data1: 0, data2: 0) {
+                    NSApplication.shared.postEvent(event, atStart: false)
+                }
+            }
+        }
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        NSApplication.shared.run()
+        timer.invalidate()
+    }
+
     private func fixtureSnapshot() -> LiveSnapshot {
         let date = Date()
         let started = UInt64((date.timeIntervalSince1970 - 4_200) * 1_000_000)
         let protectedUID = UInt32.max
-        let processes = [
+        var processes = [
             LiveProcess(id: .init(pid: 30_001, started: started), parent: 1, uid: protectedUID, name: "codex",
                         executable: "/opt/bin/codex", directory: "/Users/example/fleet", cpu: 18.4, memory: 482_000_000,
                         hasControllingTerminal: true,
@@ -104,6 +135,19 @@ final class SharedMacUIHostTests: XCTestCase {
                         name: "Xcode", executable: "/Applications/Xcode.app/Contents/MacOS/Xcode",
                         directory: "/Users/example/fleet", cpu: 1.8, memory: 1_240_000_000)
         ]
+        if let text = ProcessInfo.processInfo.environment["PERFORMANCEDADDY_UI_HOST_ROWS"],
+           let count = Int(text), (4...1_500).contains(count) {
+            for index in 3..<count {
+                let pid = Int32(30_001 + index)
+                let identity = ProcessIdentity(pid: pid, started: started + UInt64(index) * 1_000_000)
+                let memory = UInt64(10 + index % 100) * 1_000_000
+                let process = LiveProcess(id: identity, parent: 1, uid: protectedUID,
+                    name: "Protected fixture \(index + 1)", executable: "/fixtures/process-\(index + 1)",
+                    directory: "/fixtures/workspace-\(index + 1)", cpu: Double(index % 25) / 10,
+                    memory: memory)
+                processes.append(process)
+            }
+        }
         let system = SystemSample(timestamp: date, usedCPUCores: 2.1, memoryHeadroomRatio: 0.42,
                                   swapUsedBytes: 0, diskFreeBytes: 512_000_000_000, thermal: .nominal, processes: [])
         return LiveSnapshot(date: date, processes: processes, system: system, pressure: "Normal", compressed: 1_100_000_000,
