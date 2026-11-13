@@ -60,7 +60,7 @@ final class SharedMacUIHostTests: XCTestCase {
         let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: width, height: isSettings ? 740 : 800),
                               styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = "PerformanceDaddy UI host · protected fixtures · \(isSettings ? "Settings" : page.rawValue)"
-        window.contentMinSize = isSettings ? NSSize(width: 660, height: 740) : NSSize(width: 880, height: 680)
+        window.contentMinSize = isSettings ? NSSize(width: 660, height: 740) : NSSize(width: 880, height: 800)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
         window.backgroundColor = .black

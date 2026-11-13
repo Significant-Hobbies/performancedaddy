@@ -17,6 +17,9 @@ Original doodle artwork belongs beside the explanation or action it supports.
 Do not add animations to live updates, row selection or scrolling. Process
 identity, sorting, multi-selection and exact-target stop review remain unchanged.
 Settings uses shared black groups and native controls rather than gray Form cards.
+The supported main-window minimum is 880×800 points. Memory history moves into a
+read-only popover when inline plotting would crowd the process list; large windows
+retain the chart. Empty history explains which readings are still needed.
 
 ## Daddy series — authoritative owner direction, 2026-09-19
 

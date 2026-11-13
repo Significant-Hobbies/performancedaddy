@@ -14,6 +14,7 @@ struct LiveWorkloadsView: View {
     @State private var showingHelp = false
     @State private var topMetric: LiveViewModel.ToolbarMetric?
     @State private var showingCompactInspector = false
+    @State private var showingMemoryHistory = false
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -22,7 +23,20 @@ struct LiveWorkloadsView: View {
         VStack(alignment: .leading, spacing: 20) {
             header(showsArtwork: geometry.size.width < 900 || selectedProcess != nil || model.snapshot == nil).zIndex(20)
             metrics
-            if page == .memory { memoryChart }
+            if page == .memory {
+                if geometry.size.height >= (geometry.size.width < 900 ? 830 : 750) {
+                    memoryChart
+                } else {
+                    HStack {
+                        Button { showingMemoryHistory = true } label: { Label("Memory history", systemImage: "chart.xyaxis.line") }
+                            .buttonStyle(SMMacButtonStyle(.quiet))
+                        Spacer()
+                        Text("Compressed: \(model.snapshot?.compressed.map(LiveViewModel.bytes) ?? "—")")
+                            .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                    }
+                    .popover(isPresented: $showingMemoryHistory) { memoryChart.padding(20).frame(width: 560).background(PerformanceTheme.fog) }
+                }
+            }
             controls
             if model.snapshot == nil {
                 ProgressView("Reading local processes and listeners…").frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -73,6 +87,7 @@ struct LiveWorkloadsView: View {
         .sheet(isPresented: $showingAgentHookSetup) { AgentHookSetupView() }
         .onChange(of: page) { _, page in
             showingCompactInspector = false
+            showingMemoryHistory = false
             model.selection = []; model.search = ""
             model.sortOrder = page == .memory ? [KeyPathComparator(\LiveProcess.memory, order: .reverse)] :
                 page == .ports ? [KeyPathComparator(\LiveProcess.sortPort)] : [KeyPathComparator(\LiveProcess.sortCPU, order: .reverse)]
@@ -197,6 +212,10 @@ struct LiveWorkloadsView: View {
                         .foregroundStyle(PerformanceTheme.action)
                 }.chartYScale(domain: 0...100).frame(height: 110)
                     .accessibilityLabel("Estimated RAM usage history, percentage of physical memory")
+                if model.memoryHistory.count < 2 {
+                    Text(model.paused ? "Resume live updates to collect memory history." : "History appears as live readings accumulate.")
+                        .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)
+                }
                 Text("RAM estimate excludes free and inactive pages. Resident process totals include shared memory; they do not add up to system RAM.")
                     .font(.caption).foregroundStyle(.secondary)
             }
