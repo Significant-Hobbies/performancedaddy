@@ -80,7 +80,7 @@ struct FanInvestigationView: View {
             }.pickerStyle(.segmented).frame(maxWidth: 260)
             Button("record \(model.selectedLength.rawValue) fan check", action: model.recordFanCheck)
                 .accessibilityLabel("Record \(model.selectedLength.rawValue) fan check")
-                .buttonStyle(SMButtonStyle(.brand, size: .compact))
+                .buttonStyle(SMMacButtonStyle(.primary))
             Text("Local and read-only. Nothing stops automatically. Two minutes gives more context than a quick check.")
                 .font(.callout).foregroundStyle(PerformanceTheme.secondaryInk)
                 .fixedSize(horizontal: false, vertical: true)
@@ -156,7 +156,7 @@ struct FanInvestigationView: View {
                 Text(finding.nextCheck).fixedSize(horizontal: false, vertical: true)
                 Button("record another \(report.capture.duration >= 60 ? "2 min" : "15 sec") check", action: model.recordFanCheck)
                     .accessibilityLabel("Record another \(report.capture.duration >= 60 ? "2 min" : "15 sec") check")
-                    .buttonStyle(SMButtonStyle(.brand, size: .compact))
+                    .buttonStyle(SMMacButtonStyle(.primary))
                 if let baseline = model.baselineReport, let comparison = model.comparison {
                     Text("Compared with \(baseline.capture.startedAt.formatted(date: .omitted, time: .standard))")
                         .font(.caption).foregroundStyle(PerformanceTheme.secondaryInk)

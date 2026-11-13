@@ -78,11 +78,12 @@ struct AppAccessAuditView: View {
     var body: some View {
         GeometryReader { geometry in
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top) {
-                PerformancePageHeader(title: "App access", subtitle: "Review launch files and keep dated notes from System Settings.", icon: "lock.shield")
-                Button("Review Login Items") { SMAppService.openSystemSettingsLoginItems() }
-                Button(scanning ? "Checking…" : "Refresh audit") { Task { await refresh() } }
-                    .disabled(scanning)
+            PerformancePageHeader(title: "App access", subtitle: "Review launch files and keep dated notes from System Settings.", icon: "lock.shield") {
+                HStack(spacing: 8) {
+                    Button("Review Login Items") { SMAppService.openSystemSettingsLoginItems() }
+                    Button(scanning ? "Checking…" : "Refresh audit") { Task { await refresh() } }
+                        .disabled(scanning)
+                }
             }
             VStack(alignment: .leading, spacing: 5) {
                 Text("Partial audit · reviewed actions").font(.headline).foregroundStyle(PerformanceTheme.amber)
@@ -96,15 +97,10 @@ struct AppAccessAuditView: View {
                 Text(actionMessage).font(.callout).foregroundStyle(PerformanceTheme.amber)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 12) {
-                Picker("Audit section", selection: $section) {
-                    ForEach(Section.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }.pickerStyle(.segmented).frame(width: 250)
-                Image(systemName: "magnifyingglass").foregroundStyle(PerformanceTheme.secondaryInk)
-                TextField("Search apps, declarations or launch files", text: $search)
-                    .textFieldStyle(.plain)
-                    .accessibilityLabel("Search app access audit")
-            }.padding(9).overlay(RoundedRectangle(cornerRadius: 7).stroke(PerformanceTheme.mintInk.opacity(0.35)))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { sectionPicker; searchField }
+                VStack(alignment: .leading, spacing: 10) { sectionPicker; searchField }
+            }
             HStack(spacing: 16) {
                 List(selection: $selectedPath) {
                     if section == .apps {
@@ -197,6 +193,18 @@ struct AppAccessAuditView: View {
             .sheet(item: $fileReview) { candidate in fileReviewSheet(candidate) }
             .sheet(item: $permissionReview) { candidate in permissionReviewSheet(candidate) }
         }
+    }
+
+    private var sectionPicker: some View {
+        Picker("Audit section", selection: $section) {
+            ForEach(Section.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        }.pickerStyle(.segmented).frame(width: 250)
+    }
+
+    private var searchField: some View {
+        SMSearchField("Search apps, declarations or launch files", text: $search,
+                      accessibilityLabel: "Search app access audit")
+            .frame(minWidth: 240)
     }
 
     @ViewBuilder
@@ -433,7 +441,7 @@ struct AppAccessAuditView: View {
                     .disabled(acting)
             }
         }.padding(24).frame(width: 520).background(Color.black)
-            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(SMButtonStyle(.outline, size: .compact))
+            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(SMMacButtonStyle())
     }
 
     private func permissionReviewSheet(_ candidate: PermissionResetCandidate) -> some View {
@@ -450,6 +458,6 @@ struct AppAccessAuditView: View {
                     .disabled(acting)
             }
         }.padding(24).frame(width: 520).background(Color.black)
-            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(SMButtonStyle(.outline, size: .compact))
+            .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(SMMacButtonStyle())
     }
 }
