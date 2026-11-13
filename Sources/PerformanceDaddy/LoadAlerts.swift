@@ -353,7 +353,7 @@ struct LoadAlertSettingsView: View {
         }
         .frame(width: 660, height: 740)
         .background(Color.black)
-        .background(SMWorkspaceWindowChrome())
+        .smWorkspaceWindowChrome()
         .background(MonitoringSurface(model: live, tracksSampling: false, onWindowOpen: { open in
             windowOpen = open
             if open { isPaused = live.paused; updateStatus(); if selectedTab == 1 { updateWorkloads(from: live.snapshot) } }

@@ -126,7 +126,7 @@ struct DashboardView: View {
         .onChange(of: live.requestedDestination, initial: true) { _, requested in
             if let requested { destination = requested; live.requestedDestination = nil }
         }
-        .background(SMWorkspaceWindowChrome())
+        .smWorkspaceWindowChrome()
         .performanceTheme(PerformanceTheme.palette)
         .task {
             guard startsServices, !PerformanceStartupCheck.enabled else { return }
