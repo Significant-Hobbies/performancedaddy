@@ -19,7 +19,7 @@ import shutil
 ROOT = Path(__file__).resolve().parent.parent
 RELEASES = {
     "baseline": ("0.2.15", 20, "cd1634b440db023c58de8212934c7866de1c46ca334e3cf7b6d5b7bc412cd948"),
-    "candidate": ("0.2.20", 25, "cc7b6e68600f84fefcdff54d39d6eaf5719ecfe4037b8c98386f882aed51f551"),
+    "candidate": ("0.3.0", 26, "90576308a126a9275d5c10851df2405f9e598dc141c3d11f088b92b18cc5dc1e"),
 }
 
 
