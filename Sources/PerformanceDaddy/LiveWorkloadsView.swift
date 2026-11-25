@@ -10,6 +10,7 @@ struct LiveWorkloadsView: View {
     @State private var showingAgentHookSetup = false
     @ObservedObject var model: LiveViewModel
     let page: LivePage
+    var recordSlowdown: (() -> Void)? = nil
     @State private var showingResourceEvidence = false
     @State private var showingHelp = false
     @State private var topMetric: LiveViewModel.ToolbarMetric?
@@ -22,6 +23,29 @@ struct LiveWorkloadsView: View {
         let selectedProcess = self.selectedProcess
         VStack(alignment: .leading, spacing: 20) {
             header(showsArtwork: geometry.size.width < 900 || selectedProcess != nil || model.snapshot == nil).zIndex(20)
+            if page == .workloads, model.snapshot != nil {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        if let alert = model.relief, let work = alert.contributor {
+                            Text(alert.kind == .memory ? "\(work.name) holds \(LiveViewModel.bytes(work.memoryBytes)) of resident memory" :
+                                    String(format: "%@ is using %.1f CPU cores", work.name, work.cpuCores))
+                                .font(.callout.weight(.semibold))
+                        } else {
+                            Text(model.paused ? "Live measurements paused" : "No clear CPU or memory fix in the latest samples")
+                                .font(.callout.weight(.medium))
+                        }
+                        if let result = model.reliefResult { Text(result).font(.caption).foregroundStyle(PerformanceTheme.secondaryInk) }
+                    }
+                    Spacer()
+                    if let alert = model.relief, let work = alert.contributor {
+                        Button(work.kind == .app ? "Review quit…" : "Review stop…") { model.reviewRelief(alert) }
+                            .disabled(model.paused || model.performingAction)
+                    } else if let recordSlowdown {
+                        Button("Capture slowdown", action: recordSlowdown)
+                            .disabled(model.paused || model.performingAction)
+                    }
+                }
+            }
             metrics
             if page == .memory {
                 if geometry.size.height >= (geometry.size.width < 900 ? 830 : 750) {
@@ -699,13 +723,13 @@ private struct StopReviewView: View {
                 }
                 .listRowBackground(Color.black)
             }.frame(height: 240).listStyle(.plain).scrollContentBackground(.hidden)
-            Toggle("Force stop (SIGKILL)", isOn: $force)
-            Text(force ? "Force stop does not allow cleanup or saving." : "Requests termination with SIGTERM. Processes that remain running are reported after the action.")
+            if review.relief == nil { Toggle("Force stop (SIGKILL)", isOn: $force) }
+            Text(review.relief?.contributor?.kind == .app ? "Requests a normal app quit so you can save changes. Live monitoring measures the system again afterward." : force ? "Force stop does not allow cleanup or saving." : "Requests termination with SIGTERM. Processes that remain running are reported after the action.")
                 .font(.callout).foregroundStyle(.secondary)
             HStack {
                 Spacer()
                 Button("cancel") { model.review = nil }.accessibilityLabel("Cancel").keyboardShortcut(.cancelAction)
-                Button(force ? "Force stop \(review.targets.count)" : "Stop \(review.targets.count)", role: .destructive) {
+                Button(review.relief?.contributor?.kind == .app ? "Request quit" : force ? "Force stop \(review.targets.count)" : "Stop \(review.targets.count)", role: .destructive) {
                     Task { await model.confirmStop(force: force) }
                 }
             }

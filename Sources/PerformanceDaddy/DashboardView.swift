@@ -33,7 +33,10 @@ struct DashboardView: View {
                 }
             ZStack {
                 if let page = LivePage(rawValue: destination) {
-                    LiveWorkloadsView(model: live, page: page)
+                    LiveWorkloadsView(model: live, page: page, recordSlowdown: {
+                        destination = "Diagnose"
+                        if !model.isRecording { model.markSlowMoment() }
+                    })
                 } else if destination == "Configuration" {
                     ConfigurationView()
                 } else if destination == "App access" {

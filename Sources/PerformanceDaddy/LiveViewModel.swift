@@ -60,9 +60,51 @@ final class LiveViewModel: ObservableObject {
     }
 
     struct MemoryPoint: Identifiable { let id = UUID(); let date: Date; let used: Double }
-    struct Review: Identifiable { let id = UUID(); let targets: [LiveProcess] }
+    struct Review: Identifiable { let id = UUID(); let targets: [LiveProcess]; var relief: LoadAlert? = nil }
+    private var previousLeader: LoadAlert?
+    private(set) var relief: LoadAlert?
+    @Published private(set) var reliefResult: String?
+    private var followUp: (alert: LoadAlert, requested: Date, firstSample: Date?)?
+
+    private func observeRelief(_ sample: LiveSnapshot?) {
+        relief = nil
+        guard !paused, let sample else { previousLeader = nil; return }
+        if var pending = followUp, sample.date > pending.requested {
+            if let first = pending.firstSample, sample.date > first {
+                if pending.alert.kind == .memory {
+                    reliefResult = "Memory pressure: \(pending.alert.pressure) → \(sample.pressure) after the request."
+                } else if let before = pending.alert.usedCores, let after = sample.system.usedCPUCores, after.isFinite {
+                    reliefResult = String(format: "System CPU: %.1f → %.1f cores after the request.", before, after)
+                } else { reliefResult = "Follow-up CPU measurement unavailable." }
+                followUp = nil
+            } else { pending.firstSample = sample.date; followUp = pending }
+        }
+        let cores = ProcessInfo.processInfo.processorCount
+        let policy = LoadAlertPolicy(cpuSeconds: 0, memorySeconds: 0, cooldown: 0)
+        guard sample.pressure == "Warning" || sample.pressure == "Critical" ||
+                (sample.system.usedCPUCores ?? 0) >= Double(cores) * policy.cpuFraction else {
+            previousLeader = nil; return
+        }
+        var tracker = SustainedLoadTracker(policy: policy)
+        let leader = tracker.observeAll(sample, coreCount: cores).first { alert in
+            guard let work = alert.contributor else { return false }
+            return work.owner.stopRestriction == nil && work.targets.allSatisfy { $0.stopRestriction == nil }
+        }
+        if let leader, let previousLeader, previousLeader.kind == leader.kind,
+           previousLeader.contributor?.owner.id == leader.contributor?.owner.id,
+           (0.01...30).contains(sample.date.timeIntervalSince(previousLeader.date)) { relief = leader }
+        previousLeader = leader
+    }
+
+    func reviewRelief(_ alert: LoadAlert) {
+        guard !paused, !performingAction, review == nil, alert.date == relief?.date,
+              (0...30).contains(Date().timeIntervalSince(alert.date)),
+              let work = alert.contributor, work.owner.id == relief?.contributor?.owner.id else { return }
+        review = Review(targets: work.targets, relief: alert)
+    }
     @Published var snapshot: LiveSnapshot? {
         didSet {
+            observeRelief(snapshot)
             index = WorkloadIndex(snapshot?.processes ?? [])
             rowCache.removeAll(); agentRows = nil; cachedRoots = nil
             reconcilePendingAgentSignals()
@@ -73,6 +115,7 @@ final class LiveViewModel: ObservableObject {
     @Published var selection: Set<ProcessIdentity> = []
     @Published var paused = false { didSet {
         if paused != oldValue {
+            previousLeader = nil; relief = nil; followUp = nil; reliefResult = nil
             needsNewMeasurementWindow = true; measurementGeneration = UUID()
             measurementResetObserver?()
             updateHeartbeat()
@@ -790,6 +833,17 @@ final class LiveViewModel: ObservableObject {
     }
     func confirmStop(force: Bool) async {
         guard let reviewed = review else { return }
+        if let alert = reviewed.relief, let contributor = alert.contributor {
+            review = nil
+            guard !force, !paused, (0...30).contains(Date().timeIntervalSince(alert.date)) else {
+                reliefResult = "The load sample expired. Review the latest reading."
+                return
+            }
+            let result = await requestQuit(contributor, fromProcesses: true)
+            reliefResult = result.message
+            followUp = result.sent ? (alert, Date(), nil) : nil
+            return
+        }
         performingAction = true
         review = nil
         let beforeStop = snapshot?.processes ?? []
@@ -810,16 +864,27 @@ final class LiveViewModel: ObservableObject {
     /// so they can ask to save; other workloads receive SIGTERM over the exact
     /// identities captured at alert time. Nothing is force-stopped from here.
     func quitFromLoadAlert(_ contributor: LoadContributor) async -> String {
-        guard !performingAction, review == nil else { return "Another stop is under review. Open PerformanceDaddy to continue." }
-        guard contributor.owner.stopRestriction == nil else { return "\(contributor.name) is protected and was not quit." }
+        await requestQuit(contributor, fromProcesses: false).message
+    }
+
+    private func requestQuit(_ contributor: LoadContributor, fromProcesses: Bool) async -> (sent: Bool, message: String) {
+        guard !performingAction, review == nil else { return (false, "Another stop is under review. Open PerformanceDaddy to continue.") }
+        guard contributor.owner.stopRestriction == nil else { return (false, "\(contributor.name) is protected and was not quit.") }
         performingAction = true
         let beforeStop = snapshot?.processes ?? []
         let message: String
-        if let app = runningApplication(for: contributor) {
+        let application = runningApplication(for: contributor)
+        let requestSent: Bool
+        if fromProcesses && contributor.kind == .app && application == nil {
+            performingAction = false
+            return (false, "The reviewed app is no longer available to quit.")
+        }
+        if let app = application {
             let date = Date()
             let sent = app.terminate()
+            requestSent = sent
             lifecycle.record(contributor.owner, at: date, force: false, signalSent: sent, observed: beforeStop,
-                             request: "Quit request from a load alert")
+                             request: fromProcesses ? "Reviewed quit from Processes" : "Quit request from a load alert")
             message = sent ? "Asked \(contributor.name) to quit. It may ask you to save first."
                 : "macOS did not accept the quit request for \(contributor.name)."
         } else {
@@ -832,6 +897,7 @@ final class LiveViewModel: ObservableObject {
                 lifecycle.record(outcome.process, at: date, force: false, signalSent: outcome.signalSent, observed: beforeStop)
             }
             let sent = results.filter(\.signalSent).count
+            requestSent = sent > 0
             message = sent > 0 ? "Stop requested for \(contributor.name) (\(sent) of \(results.count) processes)."
                 : "\(contributor.name) was not stopped: \(results.first?.message ?? "no eligible process")."
         }
@@ -839,7 +905,7 @@ final class LiveViewModel: ObservableObject {
         try? await Task.sleep(for: .seconds(1))
         performingAction = false
         await refresh(background: !hasVisibleSurface)
-        return message
+        return (requestSent, message)
     }
 
     private func runningApplication(for contributor: LoadContributor) -> NSRunningApplication? {
@@ -862,6 +928,7 @@ final class LiveViewModel: ObservableObject {
     }
 
     func handleSystemWake() {
+        previousLeader = nil; relief = nil; followUp = nil; reliefResult = nil
         needsNewMeasurementWindow = true
         measurementGeneration = UUID()
         measurementResetObserver?()

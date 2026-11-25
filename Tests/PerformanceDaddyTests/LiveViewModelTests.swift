@@ -225,6 +225,38 @@ final class LiveViewModelTests: XCTestCase {
         // matching-executable observations do not change this child's outcome.
     }
 
+    func testImmediateReliefReviewsOwnedChildAndMeasuresMemoryAfterStop() async throws {
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        child.arguments = ["30"]
+        try child.run()
+        defer { if child.isRunning { child.terminate() }; child.waitUntilExit() }
+        let history = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: history) }
+        let model = LiveViewModel(lifecycleStore: LifecycleHistoryStore(fileURL: history))
+        await model.refresh()
+        let observed = try XCTUnwrap(model.snapshot?.processes.first { $0.id.pid == child.processIdentifier })
+        let now = Date()
+        func reading(_ date: Date, _ pressure: String) -> LiveSnapshot {
+            LiveSnapshot(date: date, processes: [observed], system: snapshot([]).system,
+                         pressure: pressure, compressed: nil, unavailableProcesses: 0, portsDate: nil, scanSeconds: 0.01)
+        }
+        model.snapshot = reading(now.addingTimeInterval(-5), "Warning")
+        XCTAssertNil(model.relief)
+        model.snapshot = reading(now, "Warning")
+        let relief = try XCTUnwrap(model.relief)
+        model.reviewRelief(relief)
+        XCTAssertEqual(model.review?.targets.map(\.id), [observed.id])
+        XCTAssertTrue(child.isRunning)
+        await model.confirmStop(force: false)
+        XCTAssertEqual(model.outcomes.first?.signalSent, true)
+        let later = Date().addingTimeInterval(1)
+        model.snapshot = reading(later, "Normal")
+        model.snapshot = reading(later.addingTimeInterval(5), "Normal")
+        XCTAssertNil(model.relief)
+        XCTAssertTrue(model.reliefResult?.contains("Warning → Normal") == true)
+    }
+
     func testMissingSampleDoesNotConfirmExit() {
         let model = LiveViewModel()
         let target = process(999, name: "worker", cpu: 1)
