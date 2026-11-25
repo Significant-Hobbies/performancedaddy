@@ -71,11 +71,12 @@ final class LiveViewModel: ObservableObject {
         guard !paused, let sample else { previousLeader = nil; return }
         if var pending = followUp, sample.date > pending.requested {
             if let first = pending.firstSample, sample.date > first {
+                let label = (pending.alert.contributor?.name ?? "Reviewed workload") + " · " + sample.date.formatted(date: .omitted, time: .standard)
                 if pending.alert.kind == .memory {
-                    reliefResult = "Memory pressure: \(pending.alert.pressure) → \(sample.pressure) after the request."
+                    reliefResult = "\(label) · Memory pressure: \(pending.alert.pressure) → \(sample.pressure) after the request."
                 } else if let before = pending.alert.usedCores, let after = sample.system.usedCPUCores, after.isFinite {
-                    reliefResult = String(format: "System CPU: %.1f → %.1f cores after the request.", before, after)
-                } else { reliefResult = "Follow-up CPU measurement unavailable." }
+                    reliefResult = label + " · " + String(format: "System CPU: %.1f → %.1f cores after the request.", before, after)
+                } else { reliefResult = label + " · Follow-up CPU measurement unavailable." }
                 followUp = nil
             } else { pending.firstSample = sample.date; followUp = pending }
         }
@@ -88,7 +89,8 @@ final class LiveViewModel: ObservableObject {
         var tracker = SustainedLoadTracker(policy: policy)
         let leader = tracker.observeAll(sample, coreCount: cores).first { alert in
             guard let work = alert.contributor else { return false }
-            return work.owner.stopRestriction == nil && work.targets.allSatisfy { $0.stopRestriction == nil }
+            return work.owner.stopRestriction == nil && work.targets.allSatisfy { $0.stopRestriction == nil } &&
+                (work.kind != .app || runningApplication(for: work) != nil)
         }
         if let leader, let previousLeader, previousLeader.kind == leader.kind,
            previousLeader.contributor?.owner.id == leader.contributor?.owner.id,
@@ -96,10 +98,14 @@ final class LiveViewModel: ObservableObject {
         previousLeader = leader
     }
 
+    private var canSampleDuringReview: Bool { review == nil || review?.relief != nil }
+
     func reviewRelief(_ alert: LoadAlert) {
         guard !paused, !performingAction, review == nil, alert.date == relief?.date,
               (0...30).contains(Date().timeIntervalSince(alert.date)),
               let work = alert.contributor, work.owner.id == relief?.contributor?.owner.id else { return }
+        reliefResult = nil
+        followUp = nil
         review = Review(targets: work.targets, relief: alert)
     }
     @Published var snapshot: LiveSnapshot? {
@@ -269,7 +275,7 @@ final class LiveViewModel: ObservableObject {
                     objectWillChange.send()
                     persistLifecycle()
                 }
-                if !capturingIncident && !paused && review == nil && !performingAction { await refresh(background: !hasVisibleSurface) }
+                if !capturingIncident && !paused && canSampleDuringReview && !performingAction { await refresh(background: !hasVisibleSurface) }
                 let interval = automaticRefreshInterval
                 do { try await Task.sleep(for: .seconds(interval)) } catch { return }
             }
@@ -293,7 +299,7 @@ final class LiveViewModel: ObservableObject {
                     do { try await Task.sleep(for: .milliseconds(25)) } catch { return }
                 }
                 guard !Task.isCancelled, let self, self.hasVisibleSurface,
-                      !self.paused, self.review == nil, !self.performingAction else { return }
+                      !self.paused, self.canSampleDuringReview, !self.performingAction else { return }
                 await self.refresh()
             }
         }
@@ -833,10 +839,13 @@ final class LiveViewModel: ObservableObject {
     }
     func confirmStop(force: Bool) async {
         guard let reviewed = review else { return }
-        if let alert = reviewed.relief, let contributor = alert.contributor {
+        if let initial = reviewed.relief {
             review = nil
-            guard !force, !paused, (0...30).contains(Date().timeIntervalSince(alert.date)) else {
-                reliefResult = "The load sample expired. Review the latest reading."
+            guard !force, !paused, let alert = relief, alert.kind == initial.kind,
+                  let contributor = alert.contributor, contributor.owner.id == initial.contributor?.owner.id,
+                  Set(contributor.targets.map(\.id)) == Set(reviewed.targets.map(\.id)),
+                  (0...30).contains(Date().timeIntervalSince(alert.date)) else {
+                reliefResult = "The measured load or the target changed. Nothing was stopped."
                 return
             }
             let result = await requestQuit(contributor, fromProcesses: true)

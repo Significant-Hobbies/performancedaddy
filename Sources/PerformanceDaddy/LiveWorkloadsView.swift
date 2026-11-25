@@ -699,7 +699,12 @@ private struct StopReviewView: View {
     @State private var force = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Stop \(review.targets.count) \(review.targets.count == 1 ? "process" : "processes")?").font(.title2.bold())
+            if let app = review.relief?.contributor, app.kind == .app {
+                Text("Quit \(app.name)?").font(.title2.bold())
+                Text("This asks the whole app to quit, including its windows and helpers.")
+            } else {
+                Text("Stop \(review.targets.count) \(review.targets.count == 1 ? "process" : "processes")?").font(.title2.bold())
+            }
             Text("Review the exact targets below. Stopping a process can interrupt builds, disconnect clients or lose unsaved work.")
             List(review.targets) { process in
                 HStack {
