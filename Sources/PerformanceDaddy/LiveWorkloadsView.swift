@@ -698,6 +698,7 @@ private struct StopReviewView: View {
     let review: LiveViewModel.Review
     @State private var force = false
     var body: some View {
+        let noLongerCurrent = review.relief != nil && model.currentRelief(for: review) == nil
         VStack(alignment: .leading, spacing: 18) {
             if let app = review.relief?.contributor, app.kind == .app {
                 Text("Quit \(app.name)?").font(.title2.bold())
@@ -731,12 +732,15 @@ private struct StopReviewView: View {
             if review.relief == nil { Toggle("Force stop (SIGKILL)", isOn: $force) }
             Text(review.relief?.contributor?.kind == .app ? "Requests a normal app quit so you can save changes. Live monitoring measures the system again afterward." : force ? "Force stop does not allow cleanup or saving." : "Requests termination with SIGTERM. Processes that remain running are reported after the action.")
                 .font(.callout).foregroundStyle(.secondary)
+            if noLongerCurrent {
+                Text("The load or process list changed. Cancel to see the latest measurement.").font(.callout)
+            }
             HStack {
                 Spacer()
                 Button("cancel") { model.review = nil }.accessibilityLabel("Cancel").keyboardShortcut(.cancelAction)
                 Button(review.relief?.contributor?.kind == .app ? "Request quit" : force ? "Force stop \(review.targets.count)" : "Stop \(review.targets.count)", role: .destructive) {
                     Task { await model.confirmStop(force: force) }
-                }
+                }.disabled(noLongerCurrent)
             }
         }.padding(24).frame(width: 520).background(Color.black)
             .preferredColorScheme(.dark).tint(PerformanceTheme.mintInk).buttonStyle(SMMacButtonStyle())

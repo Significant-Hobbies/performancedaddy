@@ -237,8 +237,8 @@ final class LiveViewModelTests: XCTestCase {
         await model.refresh()
         let observed = try XCTUnwrap(model.snapshot?.processes.first { $0.id.pid == child.processIdentifier })
         let now = Date()
-        func reading(_ date: Date, _ pressure: String) -> LiveSnapshot {
-            LiveSnapshot(date: date, processes: [observed], system: snapshot([]).system,
+        func reading(_ date: Date, _ pressure: String, extra: [LiveProcess] = []) -> LiveSnapshot {
+            LiveSnapshot(date: date, processes: [observed] + extra, system: snapshot([]).system,
                          pressure: pressure, compressed: nil, unavailableProcesses: 0, portsDate: date, scanSeconds: 0.01)
         }
         model.snapshot = reading(now.addingTimeInterval(-5), "Warning")
@@ -248,7 +248,14 @@ final class LiveViewModelTests: XCTestCase {
         model.reviewRelief(relief)
         XCTAssertEqual(model.review?.targets.map(\.id), [observed.id])
         XCTAssertTrue(child.isRunning)
-        model.snapshot = reading(now.addingTimeInterval(0.01), "Normal")
+        let newChild = LiveProcess(id: .init(pid: 2_000_000_000, started: observed.id.started + 1),
+            parent: observed.id.pid, uid: getuid(), name: "synthetic-child", executable: "/fixtures/child",
+            directory: "/tmp", cpu: 0, memory: 1)
+        let expanded = now.addingTimeInterval(0.02)
+        model.snapshot = reading(expanded, "Warning", extra: [newChild])
+        XCTAssertEqual(model.relief?.contributor?.targets.count, 2)
+        XCTAssertNil(model.currentRelief(for: try XCTUnwrap(model.review), at: expanded))
+        model.snapshot = reading(now.addingTimeInterval(0.04), "Normal")
         await model.confirmStop(force: false)
         XCTAssertTrue(child.isRunning)
         XCTAssertTrue(model.outcomes.isEmpty)

@@ -104,8 +104,6 @@ final class LiveViewModel: ObservableObject {
         guard !paused, !performingAction, review == nil, alert.date == relief?.date,
               (0...30).contains(Date().timeIntervalSince(alert.date)),
               let work = alert.contributor, work.owner.id == relief?.contributor?.owner.id else { return }
-        reliefResult = nil
-        followUp = nil
         review = Review(targets: work.targets, relief: alert)
     }
     @Published var snapshot: LiveSnapshot? {
@@ -837,14 +835,19 @@ final class LiveViewModel: ObservableObject {
         var seen: Set<ProcessIdentity> = []
         prepare(roots.flatMap { index.descendants(of: $0) }.filter { seen.insert($0.id).inserted })
     }
+    func currentRelief(for reviewed: Review, at date: Date = Date()) -> LoadAlert? {
+        guard !paused, let initial = reviewed.relief, let alert = relief, alert.kind == initial.kind,
+              let contributor = alert.contributor, contributor.owner.id == initial.contributor?.owner.id,
+              Set(contributor.targets.map(\.id)) == Set(reviewed.targets.map(\.id)),
+              (0...30).contains(date.timeIntervalSince(alert.date)) else { return nil }
+        return alert
+    }
+
     func confirmStop(force: Bool) async {
         guard let reviewed = review else { return }
-        if let initial = reviewed.relief {
+        if reviewed.relief != nil {
             review = nil
-            guard !force, !paused, let alert = relief, alert.kind == initial.kind,
-                  let contributor = alert.contributor, contributor.owner.id == initial.contributor?.owner.id,
-                  Set(contributor.targets.map(\.id)) == Set(reviewed.targets.map(\.id)),
-                  (0...30).contains(Date().timeIntervalSince(alert.date)) else {
+            guard !force, let alert = currentRelief(for: reviewed), let contributor = alert.contributor else {
                 reliefResult = "The measured load or the target changed. Nothing was stopped."
                 return
             }
