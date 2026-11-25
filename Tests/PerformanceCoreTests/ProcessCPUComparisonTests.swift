@@ -4,15 +4,16 @@ import XCTest
 final class ProcessCPUComparisonTests: XCTestCase {
     private typealias Point = (Double, UInt64?, Double?)
     private let boot = UUID()
-    private func capture(_ points: [Point], bootOverride: UUID? = nil, scanDuration: Double = 0) -> DiagnosticCapture {
+    private func capture(_ points: [Point], bootOverride: UUID? = nil, scanDurations: [Double?] = []) -> DiagnosticCapture {
         let pid: Int32 = 49
         var trace = SelectedCPUTrace(selectedPIDs: [pid], bootSession: bootOverride ?? boot)
         trace.samples = points.map { time, start, cpu in
             .init(uptime: time, rows: start.map { [.init(identity: .init(pid: pid, started: $0), cpuCores: cpu)] } ?? [])
         }
-        let samples = points.map { point in
-            SystemSample(timestamp: Date(timeIntervalSince1970: point.0), usedCPUCores: 88, memoryHeadroomRatio: nil,
-                         swapUsedBytes: nil, diskFreeBytes: nil, thermal: .nominal, processes: [], incident: .init(logicalCPUs: 8, pressure: "Normal", foreground: nil, workloads: [], readableProcesses: 1, unavailableProcesses: 0, scanSeconds: scanDuration, hardware: nil, newlyObservedProcesses: 0, noLongerObservedProcesses: 0))
+        let samples = points.enumerated().map { index, point in
+            let scanDuration: Double? = scanDurations.isEmpty ? 0 : scanDurations[index]
+            return SystemSample(timestamp: Date(timeIntervalSince1970: point.0), usedCPUCores: 88, memoryHeadroomRatio: nil,
+                         swapUsedBytes: nil, diskFreeBytes: nil, thermal: .nominal, processes: [], incident: scanDuration.map { .init(logicalCPUs: 8, pressure: "Normal", foreground: nil, workloads: [], readableProcesses: 1, unavailableProcesses: 0, scanSeconds: $0, hardware: nil, newlyObservedProcesses: 0, noLongerObservedProcesses: 0) })
         }
         return DiagnosticCapture(startedAt: samples.first!.timestamp, endedAt: samples.last!.timestamp, samples: samples,
                                  processScope: .init(coverage: .selectedSameUserPIDs, selectedPIDCount: 1, readableProcessSamples: 0, unavailableProcessSamples: 0, statement: ""), selectedCPUTrace: trace)
@@ -25,8 +26,14 @@ final class ProcessCPUComparisonTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(item.changeInMeanCPUCores), -0.8, accuracy: 0.00001)
     }
     func testSlowReadsAreDistinctFromMissingPollsAndShortWindows() throws {
-        let slow = capture([(7, 10, nil), (12, 10, 0), (17, 10, 0)], scanDuration: 3)
+        let slow = capture([(7, 10, nil), (13, 10, 0), (15, 10, 0)], scanDurations: [4, 0, 0])
         XCTAssertEqual(try ProcessCPUComparison(before: baseline, after: slow, pid: 49).status, .compared)
+        let missingScanTime = capture([(7, 10, nil), (13, 10, 0), (15, 10, 0)], scanDurations: [nil, 0, 0])
+        XCTAssertEqual(try ProcessCPUComparison(before: baseline, after: missingScanTime, pid: 49).status, .incompleteIntervals)
+        let inconsistent = capture([(7, 10, nil), (9, 10, 0), (11, 10, 0)], scanDurations: [2.5, 0, 0])
+        XCTAssertThrowsError(try ProcessCPUComparison(before: baseline, after: inconsistent, pid: 49)) {
+            XCTAssertEqual($0 as? ProcessCPUComparison.Failure, .malformed)
+        }
         let short = capture([(7, 10, nil), (9, 10, 0)])
         XCTAssertEqual(try ProcessCPUComparison(before: baseline, after: short, pid: 49).status, .insufficientObservations)
         let gap = capture([(0, 10, nil), (6, 10, 1), (8, 10, 1)])
