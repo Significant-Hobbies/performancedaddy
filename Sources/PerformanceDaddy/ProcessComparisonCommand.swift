@@ -5,13 +5,20 @@ import PerformanceCore
 enum ProcessComparisonCommand {
     static let usage = "Usage: --compare-diagnostic <before.json> <after.json> --pid <PID>\nPrint a JSON comparison for the process observed under this PID in the baseline. Both captures must select that PID on the same Mac boot.\n"
 
+    static func options(_ arguments: [String]) -> (before: String, after: String, pid: Int32)? {
+        guard arguments.count == 5, arguments[0] == "--compare-diagnostic", arguments[3] == "--pid",
+              !arguments[1].isEmpty, !arguments[2].isEmpty,
+              arguments[4].allSatisfy(\.isNumber), let pid = Int32(arguments[4]), pid > 0 else { return nil }
+        return (arguments[1], arguments[2], pid)
+    }
+
     static func run(arguments: [String]) -> Never {
         if arguments == ["--compare-diagnostic", "--help"] { print(usage, terminator: ""); exit(0) }
-        guard arguments.count == 5, arguments[3] == "--pid", let pid = Int32(arguments[4]), pid > 0 else {
+        guard let input = options(arguments) else {
             FileHandle.standardError.write(Data(usage.utf8)); exit(2)
         }
         do {
-            let result = try ProcessCPUComparison(before: read(arguments[1]), after: read(arguments[2]), pid: pid)
+            let result = try ProcessCPUComparison(before: read(input.before), after: read(input.after), pid: input.pid)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             FileHandle.standardOutput.write(try encoder.encode(result) + Data([10]))

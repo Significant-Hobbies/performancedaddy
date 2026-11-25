@@ -17,11 +17,19 @@ public struct SelectedCPUTrace: Codable, Equatable, Sendable {
     var samples: [Sample] = []
 
     public init(selectedPIDs: [Int32]) {
+        self.init(selectedPIDs: selectedPIDs, bootSession: Self.currentBootSession())
+    }
+
+    init(selectedPIDs: [Int32], bootSession: UUID?) {
         self.selectedPIDs = selectedPIDs
+        self.bootSession = bootSession
+    }
+
+    private static func currentBootSession() -> UUID? {
         var buffer = [CChar](repeating: 0, count: 64)
         var length = buffer.count
-        bootSession = sysctlbyname("kern.bootsessionuuid", &buffer, &length, nil, 0) == 0
-            ? UUID(uuidString: String(cString: buffer)) : nil
+        return sysctlbyname("kern.bootsessionuuid", &buffer, &length, nil, 0) == 0
+            ? UUID(uuidString: String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)) : nil
     }
 
     public mutating func append(_ processes: [LiveProcess], uptime: Double) {
@@ -33,7 +41,7 @@ public struct SelectedCPUTrace: Codable, Equatable, Sendable {
 
 public struct ProcessCPUComparison: Encodable {
     public enum Status: String, Encodable {
-        case compared, incompleteIntervals, targetUnobserved, pidReused
+        case compared, incompleteIntervals, insufficientObservations, targetUnobserved, pidReused
     }
     public struct Window: Encodable {
         let observations: Int
@@ -71,14 +79,15 @@ public struct ProcessCPUComparison: Encodable {
         let identities = Set(a.samples.flatMap(\.rows).map(\.identity).filter { $0.pid == pid })
         guard identities.count == 1, let identity = identities.first, identity.started > 0 else { throw Failure.missingIdentity }
         target = identity
-        before = try Self.measure(a, identity: identity)
-        after = try Self.measure(b, identity: identity)
+        before = try Self.measure(a, samples: baseline.samples, identity: identity)
+        after = try Self.measure(b, samples: followUp.samples, identity: identity)
         if b.samples.flatMap(\.rows).contains(where: { $0.identity.pid == pid && $0.identity != identity }) {
             status = .pidReused
         } else if after.matchingObservations == 0 {
             status = .targetUnobserved
-        } else if before.measuredIntervals >= 2, after.measuredIntervals >= 2,
-                  before.measuredIntervals == before.observations - 1, after.measuredIntervals == after.observations - 1 {
+        } else if min(before.observations, after.observations) < 3 {
+            status = .insufficientObservations
+        } else if before.measuredIntervals == before.observations - 1, after.measuredIntervals == after.observations - 1 {
             status = .compared
         } else { status = .incompleteIntervals }
         if status == .compared, let start = before.meanObservedCPUCores, let end = after.meanObservedCPUCores {
@@ -86,11 +95,11 @@ public struct ProcessCPUComparison: Encodable {
         } else { changeInMeanCPUCores = nil }
     }
 
-    private static func measure(_ trace: SelectedCPUTrace, identity: ProcessIdentity) throws -> Window {
+    private static func measure(_ trace: SelectedCPUTrace, samples: [SystemSample], identity: ProcessIdentity) throws -> Window {
         var observed = 0, intervals = 0
         var coreSeconds = 0.0, seconds = 0.0
         var last: Double?, previousMatched = false
-        for sample in trace.samples {
+        for (index, sample) in trace.samples.enumerated() {
             let matchingPID = sample.rows.filter { $0.identity.pid == identity.pid }
             guard matchingPID.count <= 1, sample.uptime.isFinite, sample.uptime >= 0 else { throw Failure.malformed }
             let row = matchingPID.first
@@ -99,8 +108,10 @@ public struct ProcessCPUComparison: Encodable {
             if let last {
                 let elapsed = sample.uptime - last
                 guard elapsed > 0 else { throw Failure.malformed }
-                // Capture polls every two seconds. Drop intervals that missed a full poll.
-                if matches, previousMatched, elapsed < 4, let cpu = row?.cpuCores, cpu.isFinite, cpu >= 0 {
+                // The two-second timer begins after the previous scan completed.
+                let scanDuration = samples[index - 1].incident?.scanSeconds ?? 0
+                guard scanDuration.isFinite, scanDuration >= 0, scanDuration <= elapsed else { throw Failure.malformed }
+                if matches, previousMatched, elapsed - scanDuration < 4, let cpu = row?.cpuCores, cpu.isFinite, cpu >= 0 {
                     coreSeconds += cpu * elapsed
                     seconds += elapsed
                     intervals += 1

@@ -10,7 +10,7 @@ test('native workspace preserves process, alert and lifecycle behavior', { timeo
   const result = spawnSync('npx', ['--offline', 'xcodebuildmcp', 'swift-package', 'test', '--json', JSON.stringify({
     packagePath,
     configuration: 'debug',
-    filter: 'LiveViewModelTests|MenuLifecycleTests|LoadAlertCenterTests|MonitoringSurfaceTests|PerformanceUIResourcesTests|DecodedArtworkTests',
+    filter: 'ProcessCPUComparisonTests|DiagnosticCaptureOptionsTests|LiveViewModelTests|MenuLifecycleTests|LoadAlertCenterTests|MonitoringSurfaceTests|PerformanceUIResourcesTests|DecodedArtworkTests',
   })], { cwd: packagePath, encoding: 'utf8', timeout: 110_000, maxBuffer: 32 * 1024 * 1024 });
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   process.stdout.write(output);

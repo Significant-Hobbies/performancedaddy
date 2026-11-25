@@ -207,7 +207,7 @@ app=/Applications/PerformanceDaddy.app/Contents/MacOS/PerformanceDaddy
 "$app" --capture-diagnostic 10 after.json --pid "$pid"
 "$app" --compare-diagnostic before.json after.json --pid "$pid"
 ```
-The JSON binds the baseline PID to its process start time, reports interval-weighted CPU in cores, and returns the follow-up minus baseline change when both windows have continuous measurements. Missing observations, PID reuse and intervals of four seconds or longer withhold the change. An unobserved process may have exited or become inaccessible. Captures made before process comparison support lack identity evidence and require a fresh recording.
+The JSON binds the baseline PID to its process start time, reports interval-weighted CPU in cores, and returns the follow-up minus baseline change when both windows have continuous measurements. A completed comparison exits 0. Read the JSON `status`. Only `compared` includes `changeInMeanCPUCores`. Fewer than three observations, missing samples, PID reuse, or four seconds between a completed read and the next poll withhold the change. Invalid inputs exit nonzero. An unobserved process may have exited or become inaccessible. Captures made before process comparison support lack identity evidence and require a fresh recording.
 
 Use `swift run PerformanceDaddy --preview-fixture` to inspect the selected UI
 with clearly labelled synthetic before/after evidence.
