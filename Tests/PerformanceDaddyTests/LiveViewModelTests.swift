@@ -239,7 +239,7 @@ final class LiveViewModelTests: XCTestCase {
         let now = Date()
         func reading(_ date: Date, _ pressure: String) -> LiveSnapshot {
             LiveSnapshot(date: date, processes: [observed], system: snapshot([]).system,
-                         pressure: pressure, compressed: nil, unavailableProcesses: 0, portsDate: nil, scanSeconds: 0.01)
+                         pressure: pressure, compressed: nil, unavailableProcesses: 0, portsDate: date, scanSeconds: 0.01)
         }
         model.snapshot = reading(now.addingTimeInterval(-5), "Warning")
         XCTAssertNil(model.relief)
