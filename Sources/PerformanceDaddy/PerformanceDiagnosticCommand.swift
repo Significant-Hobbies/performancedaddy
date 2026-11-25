@@ -29,16 +29,19 @@ enum PerformanceDiagnosticCommand {
                 var builder = SnapshotEvidenceBuilder()
                 let startedAt = Date(), end = ContinuousClock.now.advanced(by: .seconds(options.duration))
                 var samples: [SystemSample] = []
+                var trace = options.selectedSameUserPIDs.map { SelectedCPUTrace(selectedPIDs: $0) }
                 var readableProcessSamples = 0
                 var unavailableProcessSamples = 0
                 repeat {
                     try Task.checkCancellation()
+                    let sampleUptime = ProcessInfo.processInfo.systemUptime
                     let snapshot: LiveSnapshot
                     if let selectedPIDs = options.selectedSameUserPIDs {
                         snapshot = await sampler.sample(selectedSameUserPIDs: selectedPIDs)
                     } else {
                         snapshot = await sampler.sample(includePorts: false)
                     }
+                    trace?.append(snapshot.processes, uptime: sampleUptime)
                     readableProcessSamples += snapshot.processes.count
                     unavailableProcessSamples += snapshot.unavailableProcesses
                     samples.append(builder.sample(snapshot, foreground: foreground))
@@ -56,7 +59,7 @@ enum PerformanceDiagnosticCommand {
                     unavailableProcessSamples: unavailableProcessSamples,
                     statement: scopeStatement)
                 let capture = DiagnosticCapture(startedAt: startedAt, endedAt: Date(), samples: samples,
-                                                processScope: processScope)
+                                                processScope: processScope, selectedCPUTrace: trace)
                 let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
                 try encoder.encode(capture).write(to: output, options: .withoutOverwriting)
                 try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: output.path)

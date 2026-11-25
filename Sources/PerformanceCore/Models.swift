@@ -85,14 +85,16 @@ public struct DiagnosticCapture: Codable, Equatable, Sendable {
     public let followUp: FollowUpEvidence?
     /// Present on native one-shot CLI captures. Older saved captures omit this field.
     public let processScope: DiagnosticProcessScope?
+    public let selectedCPUTrace: SelectedCPUTrace?
 
-    public init(startedAt: Date, endedAt: Date, samples: [SystemSample], isFixture: Bool = false, marker: IncidentMarker? = nil, followUp: FollowUpEvidence? = nil, processScope: DiagnosticProcessScope? = nil) {
+    public init(startedAt: Date, endedAt: Date, samples: [SystemSample], isFixture: Bool = false, marker: IncidentMarker? = nil, followUp: FollowUpEvidence? = nil, processScope: DiagnosticProcessScope? = nil, selectedCPUTrace: SelectedCPUTrace? = nil) {
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.samples = samples
         self.isFixture = isFixture
         self.marker = marker
         self.followUp = followUp
+        self.selectedCPUTrace = selectedCPUTrace
         self.processScope = processScope
     }
 
