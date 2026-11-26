@@ -46,6 +46,9 @@ public enum PerformanceRoute: String, CaseIterable, Identifiable, Sendable {
         live.start()
     }
 
+    /// Hosts with a single notification subsystem can install this delegate directly.
+    public var notificationDelegate: any UNUserNotificationCenterDelegate { alerts }
+
     public var notificationCategories: Set<UNNotificationCategory> {
         LoadAlertCenter.notificationCategories
     }
