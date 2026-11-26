@@ -272,6 +272,50 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertTrue(model.reliefResult?.contains("Warning → Normal") == true)
     }
 
+    func testResourceLeadersReviewUsesCurrentIdentityAndCanStopASingleOwnedWorker() async throws {
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        child.arguments = ["60"]
+        try child.run()
+        defer { if child.isRunning { child.terminate() }; child.waitUntilExit() }
+        let history = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: history) }
+        let model = LiveViewModel(lifecycleStore: LifecycleHistoryStore(fileURL: history))
+        await model.refresh()
+        let worker = try XCTUnwrap(model.snapshot?.processes.first { $0.id.pid == child.processIdentifier })
+        let other = process(90_001, name: "cpu-leader", cpu: 80)
+        func reading(_ processes: [LiveProcess], date: Date = Date()) -> LiveSnapshot {
+            LiveSnapshot(date: date, processes: processes, system: snapshot([]).system,
+                         pressure: "Normal", compressed: nil, unavailableProcesses: 0, portsDate: date, scanSeconds: 0.01)
+        }
+        let baseline = reading([worker, other])
+        let leaders = LiveViewModel.ResourceLeaders(baseline)
+        XCTAssertEqual(leaders.cpu.first?.owner.id, other.id)
+        let reviewed = try XCTUnwrap(leaders.memory.first)
+        XCTAssertEqual(reviewed.owner.id, worker.id)
+        model.snapshot = reading([], date: Date())
+        let missing = await model.stopMeasuredLeader(reviewed)
+        XCTAssertTrue(missing.contains("changed"))
+        model.snapshot = reading([worker], date: Date().addingTimeInterval(-60))
+        let expired = await model.stopMeasuredLeader(reviewed)
+        XCTAssertTrue(expired.contains("expired"))
+        XCTAssertTrue(child.isRunning)
+        model.snapshot = reading([worker])
+        _ = await model.stopMeasuredLeader(reviewed)
+        XCTAssertEqual(model.outcomes.filter(\.signalSent).map(\.process.id), [worker.id])
+    }
+
+    func testResourceLeadersScopeExcludesUnattributedDescendants() throws {
+        let model = LiveViewModel()
+        let parent = process(90_001, name: "owner", cpu: 95)
+        let child = process(90_002, parent: parent.id.pid, name: "other", cpu: 5)
+        let leaders = LiveViewModel.ResourceLeaders(snapshot([parent, child]))
+        let first = try XCTUnwrap(leaders.cpu.first)
+        XCTAssertEqual(first.owner.id, parent.id)
+        XCTAssertEqual(first.targets.map(\.id), [parent.id])
+        XCTAssertNil(model.leaderRestriction(first))
+    }
+
     func testMissingSampleDoesNotConfirmExit() {
         let model = LiveViewModel()
         let target = process(999, name: "worker", cpu: 1)

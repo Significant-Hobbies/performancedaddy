@@ -61,6 +61,50 @@ final class LiveViewModel: ObservableObject {
 
     struct MemoryPoint: Identifiable { let id = UUID(); let date: Date; let used: Double }
     struct Review: Identifiable { let id = UUID(); let targets: [LiveProcess]; var relief: LoadAlert? = nil }
+    struct ResourceLeaders {
+        let date: Date
+        let pressure: String
+        let memory: [LoadContributor]
+        let cpu: [LoadContributor]
+
+        init(_ snapshot: LiveSnapshot) {
+            date = snapshot.date
+            pressure = snapshot.pressure
+            let groups = LoadContributors.group(snapshot.processes, limitTargetsToMembers: true)
+            memory = Array(groups.filter { $0.memoryBytes > 0 }.sorted {
+                $0.memoryBytes == $1.memoryBytes ? $0.owner.id.pid < $1.owner.id.pid : $0.memoryBytes > $1.memoryBytes
+            }.prefix(3))
+            cpu = Array(groups.filter { $0.cpuCores > 0 }.sorted {
+                $0.cpuCores == $1.cpuCores ? $0.owner.id.pid < $1.owner.id.pid : $0.cpuCores > $1.cpuCores
+            }.prefix(3))
+        }
+    }
+
+    func leaderRestriction(_ work: LoadContributor) -> String? {
+        if let restriction = work.targets.compactMap(\.stopRestriction).first { return restriction }
+        if work.kind == .app && runningApplication(for: work) == nil { return "App quit unavailable" }
+        return nil
+    }
+
+    func stopMeasuredLeader(_ reviewed: LoadContributor) async -> String {
+        guard !performingAction, review == nil, let snapshot,
+              (0...30).contains(Date().timeIntervalSince(snapshot.date)) else {
+            return "The measurement expired. Measure again before stopping anything."
+        }
+        let leaders = ResourceLeaders(snapshot)
+        guard let current = (leaders.memory + leaders.cpu).first(where: { $0.owner.id == reviewed.owner.id }),
+              current.kind == reviewed.kind, current.owner.executable == reviewed.owner.executable,
+              Set(current.targets.map(\.id)) == Set(reviewed.targets.map(\.id)),
+              leaderRestriction(current) == nil else {
+            return "The workload or its targets changed. Measure again to see the current leaders."
+        }
+        let result = await requestQuit(current, fromProcesses: true)
+        if result.sent && current.memberIdentities.allSatisfy({ ProcessPresence.inspect($0) == .gone }) {
+            return "\(current.name) exited. Its measured resident memory before the request was \(Self.bytes(current.memoryBytes))."
+        }
+        return result.message
+    }
+
     private var previousLeader: LoadAlert?
     private(set) var relief: LoadAlert?
     @Published private(set) var reliefResult: String?

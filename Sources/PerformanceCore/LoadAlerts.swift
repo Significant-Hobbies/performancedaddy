@@ -55,7 +55,7 @@ public enum LoadContributors {
     /// Groups helpers under their outermost app process, agent descendants under
     /// the agent, and leaves everything else individual. App-launched command-line
     /// work is not attributed to the launching app: quitting it would be wrong.
-    public static func group(_ processes: [LiveProcess]) -> [LoadContributor] {
+    public static func group(_ processes: [LiveProcess], limitTargetsToMembers: Bool = false) -> [LoadContributor] {
         let index = WorkloadIndex(processes)
         var members: [ProcessIdentity: (LoadContributor.Kind, LiveProcess, [LiveProcess])] = [:]
         for process in processes {
@@ -85,7 +85,12 @@ public enum LoadContributors {
                 name = owner.name
                 key = "process:\(owner.executable.isEmpty ? owner.name : owner.executable)"
             }
-            let targets = kind == .app ? [owner] : index.descendants(of: owner)
+            let targets: [LiveProcess]
+            if kind == .app { targets = [owner] }
+            else if limitTargetsToMembers {
+                let members = Set(group.map(\.id))
+                targets = index.descendants(of: owner).filter { members.contains($0.id) }
+            } else { targets = index.descendants(of: owner) }
             return LoadContributor(kind: kind, name: name, ignoreKey: key, owner: owner,
                                    targets: targets.isEmpty ? [owner] : targets,
                                    cpuCores: group.reduce(0) { $0 + ($1.cpu.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 0) / 100 },
