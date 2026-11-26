@@ -1,0 +1,11 @@
+// The implementation target retains the original SwiftPM resource bundle and test identity.
+import PerformanceDaddy
+
+public typealias PerformanceWorkspaceSession = PerformanceDaddy.PerformanceWorkspaceSession
+public typealias PerformanceRoute = PerformanceDaddy.PerformanceRoute
+public typealias PerformanceWorkspaceView = PerformanceDaddy.PerformanceWorkspaceView
+public typealias PerformanceAgentWall = PerformanceDaddy.PerformanceAgentWall
+public typealias PerformanceWorkspaceCommands = PerformanceDaddy.PerformanceWorkspaceCommands
+public typealias PerformanceWorkspaceMenu = PerformanceDaddy.PerformanceWorkspaceMenu
+public typealias PerformanceActivityOverview = PerformanceDaddy.PerformanceActivityOverview
+public typealias PerformanceAgentStatusIndicator = PerformanceDaddy.PerformanceAgentStatusIndicator

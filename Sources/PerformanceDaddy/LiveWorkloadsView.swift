@@ -113,10 +113,12 @@ struct LiveWorkloadsView: View {
         .helpOverlay()
         .sheet(item: $model.review) { review in StopReviewView(model: model, review: review) }
         .sheet(isPresented: $showingAgentHookSetup) { AgentHookSetupView() }
-        .onChange(of: page) { _, page in
-            showingCompactInspector = false
-            showingMemoryHistory = false
-            model.selection = []; model.search = ""
+        .onChange(of: page, initial: true) { previous, page in
+            if previous != page {
+                showingCompactInspector = false
+                showingMemoryHistory = false
+                model.selection = []; model.search = ""
+            }
             model.sortOrder = page == .memory ? [KeyPathComparator(\LiveProcess.memory, order: .reverse)] :
                 page == .ports ? [KeyPathComparator(\LiveProcess.sortPort)] : [KeyPathComparator(\LiveProcess.sortCPU, order: .reverse)]
         }

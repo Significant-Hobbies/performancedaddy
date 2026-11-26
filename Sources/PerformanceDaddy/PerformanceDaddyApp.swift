@@ -1,21 +1,11 @@
 import SaaSMakerUI
 import SwiftUI
 
-@main
-enum PerformanceDaddyMain {
+public enum PerformanceDaddyMain {
     @MainActor
-    static func main() {
+    public static func main() {
         let arguments = Array(CommandLine.arguments.dropFirst())
-        if arguments.first == "--agent-hook" {
-            AgentHookCommand.run()
-            return
-        }
-        if arguments.first == "--capture-diagnostic" {
-            PerformanceDiagnosticCommand.run(arguments: arguments)
-        }
-        if arguments.first == "--compare-diagnostic" {
-            ProcessComparisonCommand.run(arguments: arguments)
-        }
+        if PerformanceWorkspaceCommands.handle(arguments: arguments) { return }
         if DiagnosticCaptureOptions.hasPIDOption(arguments) {
             FileHandle.standardError.write(Data("--pid requires --capture-diagnostic or --compare-diagnostic.\n".utf8))
             exit(2)

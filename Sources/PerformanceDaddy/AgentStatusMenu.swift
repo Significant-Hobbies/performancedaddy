@@ -68,7 +68,7 @@ struct AgentStatusMenuBarLabel: View {
 
 }
 
-private struct AgentStatusSummaryLabel: View, Equatable {
+struct AgentStatusSummaryLabel: View, Equatable {
     let summary: AgentMenuSummary
 
     var body: some View {

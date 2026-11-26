@@ -5,6 +5,7 @@ import SwiftUI
 /// The result is the review. Every action names the workload whose scope was measured.
 struct ResourceLeadersView: View {
     @ObservedObject var model: LiveViewModel
+    var onDone: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var leaders: LiveViewModel.ResourceLeaders?
     @State private var outcome: String?
@@ -17,7 +18,7 @@ struct ResourceLeadersView: View {
             HStack {
                 Text("CPU & RAM culprits").font(.title2.bold())
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Done") { if let onDone { onDone() } else { dismiss() } }.keyboardShortcut(.cancelAction)
             }
             if let leaders {
                 Text("Measured at \(leaders.date.formatted(date: .omitted, time: .standard)) · Memory pressure: \(leaders.pressure)")
@@ -41,7 +42,7 @@ struct ResourceLeadersView: View {
                 ProgressView("Measuring workloads…").frame(maxWidth: .infinity)
                 Spacer()
             }
-        }.padding(24).frame(minWidth: 520, idealWidth: 620, maxWidth: 650, minHeight: 440, idealHeight: 590, maxHeight: 640)
+        }.padding(24).frame(minWidth: 520, idealWidth: 620, maxWidth: onDone == nil ? 650 : .infinity, minHeight: 440, idealHeight: 590, maxHeight: onDone == nil ? 640 : .infinity)
             .background(PerformanceTheme.fog)
             .task { await measure() }
     }

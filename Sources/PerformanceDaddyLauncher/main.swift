@@ -1,0 +1,3 @@
+import PerformanceDaddy
+
+PerformanceDaddyMain.main()
