@@ -14,6 +14,21 @@ final class MonitoringSurfaceTests: XCTestCase {
         window.contentView = nil
     }
 
+    func testAttachingBeforeWindowIsOrderedFrontKeepsTheDashboardMounted() async {
+        let model = LiveViewModel()
+        var openings: [Bool] = []
+        let window = FixtureWindow(contentRect: NSRect(x: 0, y: 0, width: 20, height: 20), styleMask: .borderless, backing: .buffered, defer: false)
+        window.open = false
+        window.contentView = MonitoringSurface.SurfaceView(model: model, onWindowOpen: { openings.append($0) })
+        await Task.yield()
+        XCTAssertTrue(openings.isEmpty)
+        window.open = true
+        NotificationCenter.default.post(name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        await Task.yield()
+        XCTAssertEqual(openings, [true])
+        window.contentView = nil
+    }
+
     func testClosedRetainedWindowCanReportOpenAgain() async {
         let model = LiveViewModel()
         var openings: [Bool] = []

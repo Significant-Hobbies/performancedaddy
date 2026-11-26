@@ -54,7 +54,7 @@ struct MonitoringSurface: NSViewRepresentable {
             if tracksSampling { model?.setSurfaceVisible(id, visible: visible) }
             // Ordering out or hiding slows sampling without discarding view
             // state. Only willClose marks an already-open window closed.
-            if lastOpen == nil || window?.isVisible == true { reportOpen(window?.isVisible == true) }
+            if window?.isVisible == true { reportOpen(true) }
         }
 
         private func reportOpen(_ open: Bool) {
