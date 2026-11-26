@@ -1,5 +1,6 @@
 import PerformanceCore
 import SaaSMakerUI
+import Foundation
 import SwiftUI
 import UserNotifications
 
@@ -32,8 +33,10 @@ public enum PerformanceRoute: String, CaseIterable, Identifiable, Sendable {
     let diagnosis: DiagnosisViewModel
     let alerts: LoadAlertCenter
 
-    public init() {
-        let preferences = UserDefaults(suiteName: "com.significanthobbies.performancedaddy") ?? .standard
+    private var activeRoute: PerformanceRoute?
+    private var notificationRoute: PerformanceRoute?
+
+    public init(preferences: UserDefaults = UserDefaults(suiteName: "com.significanthobbies.performancedaddy") ?? .standard) {
         live = LiveViewModel(preferences: preferences)
         diagnosis = DiagnosisViewModel()
         alerts = LoadAlertCenter(defaults: preferences)
@@ -42,11 +45,35 @@ public enum PerformanceRoute: String, CaseIterable, Identifiable, Sendable {
 
     /// The host owns the notification delegate. Supply an opener for reviewed alert actions.
     public func start(openPerformance: @escaping () -> Void) {
-        alerts.attach(to: live, ownsNotificationCenter: false, openMainWindow: openPerformance)
+        start { _ in openPerformance() }
+    }
+
+    public func start(openPerformance: @escaping (PerformanceRoute) -> Void) {
+        alerts.attach(to: live, ownsNotificationCenter: false) { [weak self] in
+            guard let self else { return }
+            let route = PerformanceRoute.allCases.first {
+                $0.dashboardDestination == live.requestedDestination
+            } ?? .processes
+            notificationRoute = route
+            openPerformance(route)
+        }
         live.start()
     }
 
-    /// Hosts with a single notification subsystem can install this delegate directly.
+    func enter(_ route: PerformanceRoute) {
+        let fromNotification = notificationRoute == route
+        notificationRoute = nil
+        guard activeRoute != route else { return }
+        activeRoute = route
+        live.inspectPorts = route == .ports
+        live.search = ""
+        if !fromNotification { live.selection = [] }
+        if let page = LivePage(rawValue: route.dashboardDestination) {
+            live.sortForPage(page)
+        }
+    }
+
+    /// Install alongside notificationCategories when Performance handles the host’s notification actions.
     public var notificationDelegate: any UNUserNotificationCenterDelegate { alerts }
 
     public var notificationCategories: Set<UNNotificationCategory> {
@@ -54,7 +81,7 @@ public enum PerformanceRoute: String, CaseIterable, Identifiable, Sendable {
     }
 
     public func handleNotification(_ delivery: PerformanceNotificationDelivery) async -> Bool {
-        guard notificationCategories.contains(where: { $0.identifier == delivery.category }) else { return false }
+        guard LoadAlertCenter.acceptsCategory(delivery.category) else { return false }
         await alerts.deliver(delivery)
         return true
     }
@@ -95,6 +122,7 @@ public struct PerformanceWorkspaceView: View {
                 .id(route)
             }
         }
+        .onChange(of: route, initial: true) { _, route in session.enter(route) }
         .performanceTheme(PerformanceTheme.palette)
         .buttonStyle(SMMacButtonStyle())
         .background(MonitoringSurface(model: session.live))
@@ -103,6 +131,7 @@ public struct PerformanceWorkspaceView: View {
 }
 
 public struct PerformanceAgentWall: View {
+    public static let windowID = "agent-wall"
     let session: PerformanceWorkspaceSession
     public init(session: PerformanceWorkspaceSession) { self.session = session }
 
@@ -136,7 +165,7 @@ public struct PerformanceWorkspaceMenu: View {
         Button(live.paused ? "Resume performance monitoring" : "Pause performance monitoring") {
             live.paused.toggle()
         }
-        Button("Open agent wall") { openWindow(id: "agent-wall") }
+        Button("Open agent wall") { openWindow(id: PerformanceAgentWall.windowID) }
         Button("Performance alerts…") { onNavigate(.alerts) }
         DaddyCompletionNoticeToggle(title: "Notify when diagnosis finishes")
     }
@@ -152,5 +181,12 @@ public struct PerformanceAgentStatusIndicator: View {
 
     public var body: some View {
         AgentStatusSummaryLabel(summary: status.summary).equatable()
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func performanceWindowChrome(embedded: Bool) -> some View {
+        if embedded { self } else { smWorkspaceWindowChrome() }
     }
 }

@@ -37,7 +37,7 @@ struct DashboardView: View {
     private var diagnosisSubtitle: String {
         switch entryAction {
         case .traces: "Import a stack profile or select a saved recording to export its trace."
-        case .followUp: "Compare the same task before and after a change."
+        case .followUp: model.recentReports.isEmpty && model.report == nil ? "Record a first slowdown to enable a before-and-after comparison." : "Compare the same task before and after a change."
         default: "Record the slowdown. Review the evidence."
         }
     }
@@ -84,6 +84,10 @@ struct DashboardView: View {
                     VStack(spacing: 0) {
                         SMWorkspaceHeader(diagnosisTitle, subtitle: diagnosisSubtitle) {
                           HStack(spacing: 8) {
+                            if entryAction == .followUp {
+                                Button("Prepare follow-up", action: model.performRecommendedAction)
+                                    .disabled(model.isRecording || model.report == nil)
+                            }
                             Button("import stacks", action: model.importProfile).disabled(model.importingProfile)
                             if model.report != nil { Button("export trace", action: model.exportTrace) }
                             Menu("Recent runs (\(model.recentReports.count))") {
@@ -164,17 +168,17 @@ struct DashboardView: View {
         .onChange(of: live.requestedDestination, initial: true) { _, requested in
             if let requested { destination = requested; live.requestedDestination = nil }
         }
-        .smWorkspaceWindowChrome()
+        .performanceWindowChrome(embedded: embedded)
         .performanceTheme(PerformanceTheme.palette)
         .task {
             guard startsServices, !PerformanceStartupCheck.enabled else { return }
             await model.loadHistory()
             guard !Task.isCancelled else { return }
-            if entryAction == .followUp, !model.isRecording {
-                if model.report == nil, let recent = model.recentReports.first { model.review(recent) }
-                model.performRecommendedAction()
-            }
             live.start()
+        }
+        .onChange(of: model.recentReports.count, initial: true) { _, _ in
+            if entryAction == .followUp, !model.isRecording, model.report == nil,
+               let recent = model.recentReports.first { model.review(recent) }
         }
         .confirmationDialog("Delete all recent runs?", isPresented: $showingDeleteRecentRuns) {
             Button("Delete \(model.recentReports.count) saved runs", role: .destructive) {

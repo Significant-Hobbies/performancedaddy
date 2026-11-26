@@ -113,6 +113,10 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         refreshAuthorization()
     }
 
+    static func acceptsCategory(_ category: String) -> Bool {
+        [Category.quitApp, Category.stopProcess, Category.info].contains(category)
+    }
+
     static var notificationCategories: Set<UNNotificationCategory> {
         [
             UNNotificationCategory(identifier: Category.quitApp, actions: [
@@ -333,6 +337,7 @@ extension LoadAlertCenter: UNUserNotificationCenterDelegate {
     }
 
     func deliver(_ delivery: PerformanceNotificationDelivery) async {
+        guard Self.acceptsCategory(delivery.category) else { return }
         await handle(action: delivery.action, alertID: delivery.alertID, ignoreKey: delivery.ignoreKey,
                      name: delivery.name, kind: delivery.kind)
     }
@@ -381,7 +386,7 @@ struct LoadAlertSettingsView: View {
         }
         .frame(width: embedded ? nil : 660, height: embedded ? nil : 740)
         .background(Color.black)
-        .smWorkspaceWindowChrome()
+        .performanceWindowChrome(embedded: embedded)
         .background(MonitoringSurface(model: live, tracksSampling: false, onWindowOpen: { open in
             windowOpen = open
             if open { isPaused = live.paused; updateStatus(); if selectedTab == 1 { updateWorkloads(from: live.snapshot) } }

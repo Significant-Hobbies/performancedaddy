@@ -64,7 +64,9 @@ public struct PerformanceCulpritOverview: View {
                             }
                             Text(process.cpu.map { String(format: "%.1f%%", $0) } ?? "—")
                                 .monospacedDigit().gridColumnAlignment(.trailing)
+                                .accessibilityLabel(process.cpu.map { String(format: "CPU %.1f percent", $0) } ?? "CPU not yet measured")
                             Text(LiveViewModel.bytes(process.memory)).monospacedDigit().gridColumnAlignment(.trailing)
+                                .accessibilityLabel("Resident memory \(LiveViewModel.bytes(process.memory))")
                         }
                         .font(.callout)
                         .accessibilityElement(children: .combine)

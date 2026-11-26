@@ -11,8 +11,11 @@ final class PerformanceWorkspaceTests: XCTestCase {
         XCTAssertTrue(PerformanceWorkspaceCommands.handle(arguments: ["--agent-hook", "unsupported"]))
     }
 
-    func testHostCanConstructEverySurfaceOnOneSession() {
-        let session = PerformanceWorkspaceSession()
+    func testHostCanConstructEverySurfaceOnOneSession() throws {
+        let suite = "performance.workspace." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let session = PerformanceWorkspaceSession(preferences: defaults)
         XCTAssertNil(session.activeWorkDescription)
         XCTAssertFalse(session.notificationCategories.isEmpty)
         for route in PerformanceRoute.allCases {
