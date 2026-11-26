@@ -10,3 +10,4 @@ public typealias PerformanceWorkspaceMenu = PerformanceDaddy.PerformanceWorkspac
 public typealias PerformanceActivityOverview = PerformanceDaddy.PerformanceActivityOverview
 public typealias PerformanceAgentStatusIndicator = PerformanceDaddy.PerformanceAgentStatusIndicator
 public typealias PerformanceNotificationDelivery = PerformanceDaddy.PerformanceNotificationDelivery
+public typealias PerformanceCulpritOverview = PerformanceDaddy.PerformanceCulpritOverview

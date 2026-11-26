@@ -19,6 +19,7 @@ final class PerformanceWorkspaceTests: XCTestCase {
             _ = PerformanceWorkspaceView(session: session, route: route, onNavigate: { _ in }).body
         }
         _ = PerformanceActivityOverview(session: session)
+        _ = PerformanceCulpritOverview(session: session)
         _ = PerformanceWorkspaceMenu(session: session, onNavigate: { _ in })
         _ = PerformanceAgentWall(session: session)
         _ = PerformanceAgentStatusIndicator(session: session)
