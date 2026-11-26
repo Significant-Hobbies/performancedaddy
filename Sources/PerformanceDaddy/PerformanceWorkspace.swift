@@ -1,0 +1,204 @@
+import PerformanceCore
+import SaaSMakerUI
+import Foundation
+import SwiftUI
+import UserNotifications
+
+/// Stable identifiers for links from a host's sidebar, overview and notifications.
+public enum PerformanceRoute: String, CaseIterable, Identifiable, Sendable {
+    case diagnose, processes, ports, agents, memory, thermals, access, configuration, alerts
+    case followUp = "follow-up"
+    case traces, culprits
+
+    public var id: String { rawValue }
+
+    var dashboardDestination: String {
+        switch self {
+        case .processes, .culprits: "Processes"
+        case .ports: "Ports"
+        case .agents: "Agent sessions"
+        case .memory: "Memory"
+        case .thermals: "Fans & heat"
+        case .access: "App access"
+        case .configuration: "Configuration"
+        case .diagnose, .followUp, .traces: "Diagnose"
+        case .alerts: "Performance alerts"
+        }
+    }
+}
+
+/// Keep one session for the lifetime of the app; closing a workspace must not end an investigation.
+@MainActor public final class PerformanceWorkspaceSession: ObservableObject {
+    let live: LiveViewModel
+    let diagnosis: DiagnosisViewModel
+    let alerts: LoadAlertCenter
+
+    private var activeRoute: PerformanceRoute?
+    private var preservedSelectionRoute: PerformanceRoute?
+
+    public init(preferences: UserDefaults = UserDefaults(suiteName: "com.significanthobbies.performancedaddy") ?? .standard) {
+        live = LiveViewModel(preferences: preferences)
+        diagnosis = DiagnosisViewModel()
+        diagnosis.completionPreferences = preferences
+        alerts = LoadAlertCenter(defaults: preferences)
+        diagnosis.attach(to: live)
+    }
+
+    /// The host owns the notification delegate. Supply an opener for reviewed alert actions.
+    public func start(openPerformance: @escaping () -> Void) {
+        start { _ in openPerformance() }
+    }
+
+    public func start(openPerformance: @escaping (PerformanceRoute) -> Void) {
+        alerts.attach(to: live, ownsNotificationCenter: false) { [weak self] in
+            guard let self else { return }
+            let route = PerformanceRoute.allCases.first {
+                $0.dashboardDestination == live.requestedDestination
+            } ?? .processes
+            preserveContext(for: route)
+            openPerformance(route)
+        }
+        live.start()
+    }
+
+    func preserveContext(for route: PerformanceRoute) {
+        preservedSelectionRoute = activeRoute == route ? nil : route
+    }
+
+    func enter(_ route: PerformanceRoute) {
+        let preserve = preservedSelectionRoute == route
+        preservedSelectionRoute = nil
+        guard activeRoute != route else { return }
+        activeRoute = route
+        live.inspectPorts = route == .ports
+        if !preserve {
+            live.search = ""
+            live.selection = []
+        }
+        if let page = LivePage(rawValue: route.dashboardDestination) {
+            live.sortForPage(page)
+        }
+    }
+
+    /// Install alongside notificationCategories when Performance handles the host’s notification actions.
+    public var notificationDelegate: any UNUserNotificationCenterDelegate { alerts }
+
+    public var notificationCategories: Set<UNNotificationCategory> {
+        LoadAlertCenter.notificationCategories
+    }
+
+    public func handleNotification(_ delivery: PerformanceNotificationDelivery) async -> Bool {
+        guard LoadAlertCenter.acceptsCategory(delivery.category) else { return false }
+        await alerts.deliver(delivery)
+        return true
+    }
+
+    public var activeWorkDescription: String? {
+        PerformanceActiveWork.description(isRecording: diagnosis.isRecording, performingAction: live.performingAction)
+    }
+}
+
+public struct PerformanceWorkspaceView: View {
+    let session: PerformanceWorkspaceSession
+    let route: PerformanceRoute
+    let onNavigate: (PerformanceRoute) -> Void
+
+    public init(session: PerformanceWorkspaceSession, route: PerformanceRoute,
+                onNavigate: @escaping (PerformanceRoute) -> Void) {
+        self.session = session
+        self.route = route
+        self.onNavigate = onNavigate
+    }
+
+    public var body: some View {
+        Group {
+            switch route {
+            case .alerts:
+                LoadAlertSettingsView(alerts: session.alerts, live: session.live, embedded: true)
+            case .culprits:
+                ResourceLeadersView(model: session.live, onDone: { onNavigate(.processes) })
+            default:
+                DashboardView(model: session.diagnosis, live: session.live,
+                              initialDestination: route.dashboardDestination, embedded: true,
+                              entryAction: route) { destination in
+                    guard destination != route.dashboardDestination,
+                          let next = PerformanceRoute.allCases.first(where: { $0.dashboardDestination == destination })
+                    else { return }
+                    session.preserveContext(for: next)
+                    onNavigate(next)
+                }
+                .id(route)
+            }
+        }
+        .onChange(of: route, initial: true) { _, route in session.enter(route) }
+        .performanceTheme(PerformanceTheme.palette)
+        .buttonStyle(SMMacButtonStyle())
+        .background(MonitoringSurface(model: session.live))
+        .task { session.live.start() }
+    }
+}
+
+public struct PerformanceAgentWall: View {
+    public static let windowID = "agent-wall"
+    let session: PerformanceWorkspaceSession
+    public init(session: PerformanceWorkspaceSession) { self.session = session }
+
+    public var body: some View {
+        AgentWallView(model: session.live)
+            .performanceTheme(PerformanceTheme.palette)
+            .buttonStyle(SMMacButtonStyle())
+            .background(MonitoringSurface(model: session.live))
+            .task { session.live.start() }
+    }
+}
+
+/// Embeddable menu actions; the containing app owns the actual status item and quit/update controls.
+public struct PerformanceWorkspaceMenu: View {
+    let session: PerformanceWorkspaceSession
+    let onNavigate: (PerformanceRoute) -> Void
+    @ObservedObject private var live: LiveViewModel
+    @State private var completionEnabled = false
+    @Environment(\.openWindow) private var openWindow
+    public init(session: PerformanceWorkspaceSession, onNavigate: @escaping (PerformanceRoute) -> Void) {
+        self.session = session
+        self.onNavigate = onNavigate
+        _live = ObservedObject(wrappedValue: session.live)
+    }
+    public var body: some View {
+        Button("Find CPU & RAM culprits") { onNavigate(.culprits) }
+        Button("Feels slow now") {
+            if !session.diagnosis.isRecording { session.diagnosis.markSlowMoment() }
+            onNavigate(.diagnose)
+        }
+        Button("Agent sessions (\(live.agentCount))") { onNavigate(.agents) }
+        Button(live.paused ? "Resume performance monitoring" : "Pause performance monitoring") {
+            live.paused.toggle()
+        }
+        Button("Open agent wall") { openWindow(id: PerformanceAgentWall.windowID) }
+        Button("Performance alerts…") { onNavigate(.alerts) }
+        Toggle("Notify when diagnosis finishes", isOn: Binding(get: { completionEnabled }, set: { enabled in
+            Task { completionEnabled = await DaddyCompletionNotices.setEnabled(enabled, defaults: session.diagnosis.completionPreferences) }
+        }))
+        .onAppear { completionEnabled = DaddyCompletionNotices.isEnabled(session.diagnosis.completionPreferences) }
+    }
+}
+
+/// The agent-state indicator from the standalone menu bar, driven by the shared session.
+public struct PerformanceAgentStatusIndicator: View {
+    @StateObject private var status: AgentMenuStatus
+
+    public init(session: PerformanceWorkspaceSession) {
+        _status = StateObject(wrappedValue: AgentMenuStatus(model: session.live))
+    }
+
+    public var body: some View {
+        AgentStatusSummaryLabel(summary: status.summary).equatable()
+    }
+}
+
+extension View {
+    @ViewBuilder
+    func performanceWindowChrome(embedded: Bool) -> some View {
+        if embedded { self } else { smWorkspaceWindowChrome() }
+    }
+}

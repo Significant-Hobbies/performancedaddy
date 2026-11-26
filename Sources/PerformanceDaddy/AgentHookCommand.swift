@@ -4,12 +4,12 @@ import NativeInspection
 import PerformanceCore
 
 enum AgentHookCommand {
-    static func run() {
+    static func run(arguments: [String]) {
         // Hook JSON may contain private conversation data. Derive only a short,
         // bounded label from an opted-in prompt; never persist or forward the prompt.
-        guard CommandLine.arguments.count == 3,
+        guard arguments.count == 2,
               let provider = AgentIdentity.supportedNames.first(where: {
-                  $0.caseInsensitiveCompare(CommandLine.arguments[2]) == .orderedSame
+                  $0.caseInsensitiveCompare(arguments[1]) == .orderedSame
               }) else { return }
         let input = FileHandle.standardInput.readData(ofLength: 262_144)
         guard let object = try? JSONSerialization.jsonObject(with: input) as? [String: Any],

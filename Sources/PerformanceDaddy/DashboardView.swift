@@ -13,23 +13,54 @@ struct DashboardView: View {
     @State private var showingReplaceBaseline = false
     private var onDestinationChanged: ((String) -> Void)?
     private let startsServices: Bool
+    private let embedded: Bool
+    private let entryAction: PerformanceRoute?
 
     init(model: DiagnosisViewModel, live: LiveViewModel, initialDestination: String = "Processes",
-         startsServices: Bool = true, onDestinationChanged: ((String) -> Void)? = nil) {
+         startsServices: Bool = true, embedded: Bool = false, entryAction: PerformanceRoute? = nil, onDestinationChanged: ((String) -> Void)? = nil) {
         self.model = model; self.live = live
         self.startsServices = startsServices
+        self.embedded = embedded
+        self.entryAction = entryAction
         self.onDestinationChanged = onDestinationChanged
         _destination = State(initialValue: initialDestination)
     }
 
+    private var diagnosisTitle: String {
+        switch entryAction {
+        case .traces: "Traces and recent runs"
+        case .followUp: "Compare a follow-up"
+        default: "Root-cause analysis"
+        }
+    }
+
+    private var diagnosisSubtitle: String {
+        switch entryAction {
+        case .traces: "Import a stack profile or select a saved recording to export its trace."
+        case .followUp: model.recentReports.isEmpty && model.report == nil ? "Record a first slowdown to enable a before-and-after comparison." : "Compare the same task before and after a change."
+        default: "Record the slowdown. Review the evidence."
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            sidebar
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("workspace-sidebar")
+            if !embedded {
+                sidebar
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("workspace-sidebar")
+            }
             VStack(spacing: 0) {
                 SMWorkspaceScopeBar(LivePage(rawValue: destination) == nil ? "Investigation" : "Live diagnostics",
                                     systemImage: "waveform.path.ecg", detail: "Local to this Mac") {
+                    if embedded {
+                        Picker("Symptom", selection: $model.selectedSymptom) {
+                            ForEach(ReportedSymptom.allCases, id: \.self) { Text(symptomLabel($0)).tag($0) }
+                        }.fixedSize().disabled(model.isRecording)
+                        Button("Feels slow now") {
+                            destination = "Diagnose"
+                            model.markSlowMoment()
+                        }.disabled(model.isRecording)
+                    }
                     Button("Find CPU & RAM culprits") { showingLeaders = true }
                         .buttonStyle(SMMacButtonStyle(.primary))
                         .accessibilityIdentifier("find-resource-culprits")
@@ -51,8 +82,12 @@ struct DashboardView: View {
                     }
                 } else {
                     VStack(spacing: 0) {
-                        SMWorkspaceHeader("Root-cause analysis", subtitle: "Record the slowdown. Review the evidence.") {
+                        SMWorkspaceHeader(diagnosisTitle, subtitle: diagnosisSubtitle) {
                           HStack(spacing: 8) {
+                            if entryAction == .followUp {
+                                Button("Prepare follow-up", action: model.performRecommendedAction)
+                                    .disabled(model.isRecording || model.report == nil)
+                            }
                             Button("import stacks", action: model.importProfile).disabled(model.importingProfile)
                             if model.report != nil { Button("export trace", action: model.exportTrace) }
                             Menu("Recent runs (\(model.recentReports.count))") {
@@ -133,12 +168,17 @@ struct DashboardView: View {
         .onChange(of: live.requestedDestination, initial: true) { _, requested in
             if let requested { destination = requested; live.requestedDestination = nil }
         }
-        .smWorkspaceWindowChrome()
+        .performanceWindowChrome(embedded: embedded)
         .performanceTheme(PerformanceTheme.palette)
         .task {
             guard startsServices, !PerformanceStartupCheck.enabled else { return }
             await model.loadHistory()
+            guard !Task.isCancelled else { return }
             live.start()
+        }
+        .onChange(of: model.recentReports.count, initial: true) { _, _ in
+            if entryAction == .followUp, !model.isRecording, model.report == nil,
+               let recent = model.recentReports.first { model.review(recent) }
         }
         .confirmationDialog("Delete all recent runs?", isPresented: $showingDeleteRecentRuns) {
             Button("Delete \(model.recentReports.count) saved runs", role: .destructive) {

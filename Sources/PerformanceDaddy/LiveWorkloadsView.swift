@@ -117,8 +117,7 @@ struct LiveWorkloadsView: View {
             showingCompactInspector = false
             showingMemoryHistory = false
             model.selection = []; model.search = ""
-            model.sortOrder = page == .memory ? [KeyPathComparator(\LiveProcess.memory, order: .reverse)] :
-                page == .ports ? [KeyPathComparator(\LiveProcess.sortPort)] : [KeyPathComparator(\LiveProcess.sortCPU, order: .reverse)]
+            model.sortForPage(page)
         }
         .onChange(of: model.selection) { _, selection in
             if selection.isEmpty { showingCompactInspector = false }
@@ -169,7 +168,7 @@ struct LiveWorkloadsView: View {
 
     @ViewBuilder private var headerActions: some View {
             if page == .agents {
-                Button("insight agent sessions") { openWindow(id: "agent-wall") }.accessibilityLabel("Insight Agent Sessions")
+                Button("insight agent sessions") { openWindow(id: PerformanceAgentWall.windowID) }.accessibilityLabel("Insight Agent Sessions")
                     .visibleHelp("Open the focused agent activity wall")
                 Button("set up statuses…") { showingAgentHookSetup = true }.accessibilityLabel("Set up statuses…")
                     .visibleHelp("Copy local lifecycle hooks for Codex, Claude or Devin")

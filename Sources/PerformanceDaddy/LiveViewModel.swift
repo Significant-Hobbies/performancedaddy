@@ -586,6 +586,14 @@ final class LiveViewModel: ObservableObject {
         return DiagnosticCapture(startedAt: samples.first?.timestamp ?? start, endedAt: Date(), samples: samples, marker: marker)
     }
 
+    func sortForPage(_ page: LivePage) {
+        switch page {
+        case .memory: sortOrder = [KeyPathComparator(\LiveProcess.memory, order: .reverse)]
+        case .ports: sortOrder = [KeyPathComparator(\LiveProcess.sortPort)]
+        default: sortOrder = [KeyPathComparator(\LiveProcess.sortCPU, order: .reverse)]
+        }
+    }
+
     func rows(for page: LivePage) -> [LiveProcess] {
         if let cached = rowCache[page] { return cached }
         let all = snapshot?.processes ?? []

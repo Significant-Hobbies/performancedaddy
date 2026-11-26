@@ -21,6 +21,7 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         static let quitApp = "performancedaddy.load.app"
         static let stopProcess = "performancedaddy.load.process"
         static let info = "performancedaddy.load.info"
+        static let diagnosis = "performancedaddy.diagnosis.complete"
     }
     private enum Action {
         static let quit = "quit"
@@ -95,7 +96,7 @@ final class LoadAlertCenter: NSObject, ObservableObject {
                         cooldown: TimeInterval(max(5, min(120, cooldownMinutes)) * 60))
     }
 
-    func attach(to live: LiveViewModel, openMainWindow: @escaping () -> Void) {
+    func attach(to live: LiveViewModel, ownsNotificationCenter: Bool = true, openMainWindow: @escaping () -> Void) {
         guard self.live == nil else { return }
         self.live = live
         self.openMainWindow = openMainWindow
@@ -105,9 +106,20 @@ final class LoadAlertCenter: NSObject, ObservableObject {
             self?.live?.needsCloserMonitoring = false
         }
         guard Self.notificationsAvailable else { return }
-        let center = UNUserNotificationCenter.current()
-        center.delegate = self
-        center.setNotificationCategories([
+        if ownsNotificationCenter {
+            let center = UNUserNotificationCenter.current()
+            center.delegate = self
+            center.setNotificationCategories(Self.notificationCategories)
+        }
+        refreshAuthorization()
+    }
+
+    static func acceptsCategory(_ category: String) -> Bool {
+        [Category.quitApp, Category.stopProcess, Category.info, Category.diagnosis].contains(category)
+    }
+
+    static var notificationCategories: Set<UNNotificationCategory> {
+        [
             UNNotificationCategory(identifier: Category.quitApp, actions: [
                 UNNotificationAction(identifier: Action.quit, title: "Quit App", options: [.destructive]),
                 UNNotificationAction(identifier: Action.mute, title: "Don't Alert for This App"),
@@ -116,9 +128,20 @@ final class LoadAlertCenter: NSObject, ObservableObject {
                 UNNotificationAction(identifier: Action.quit, title: "Stop Process", options: [.destructive]),
                 UNNotificationAction(identifier: Action.mute, title: "Don't Alert for This Process"),
             ], intentIdentifiers: []),
+            UNNotificationCategory(identifier: Category.diagnosis, actions: [], intentIdentifiers: []),
             UNNotificationCategory(identifier: Category.info, actions: [], intentIdentifiers: []),
-        ])
-        refreshAuthorization()
+        ]
+    }
+
+    static func postDiagnosisComplete(defaults: UserDefaults) {
+        guard DaddyCompletionNotices.isAvailable,
+              DaddyCompletionNotices.shouldPost(enabled: DaddyCompletionNotices.isEnabled(defaults),
+                                                 hasVisibleWindow: DaddyCompletionNotices.hasVisibleAppWindow) else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Performance diagnosis complete"
+        content.body = "Open the recorded diagnosis to review the report."
+        content.categoryIdentifier = Category.diagnosis
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
     func unignore(_ key: String) { ignored.removeValue(forKey: key); tracker.reset() }
@@ -323,17 +346,48 @@ extension LoadAlertCenter: UNUserNotificationCenterDelegate {
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             didReceive response: UNNotificationResponse) async {
-        let action = response.actionIdentifier
-        let info = response.notification.request.content.userInfo
-        await handle(action: action, alertID: info["alert"] as? String,
-                     ignoreKey: info["ignoreKey"] as? String, name: info["name"] as? String,
-                     kind: (info["kind"] as? String).flatMap(LoadAlert.Kind.init(rawValue:)))
+        await deliver(PerformanceNotificationDelivery(response))
+    }
+
+    func deliver(_ delivery: PerformanceNotificationDelivery) async {
+        guard Self.acceptsCategory(delivery.category) else { return }
+        if delivery.category == Category.diagnosis {
+            if delivery.action == UNNotificationDefaultActionIdentifier {
+                live?.requestedDestination = "Diagnose"
+                openMainWindow?()
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+            return
+        }
+        await handle(action: delivery.action, alertID: delivery.alertID, ignoreKey: delivery.ignoreKey,
+                     name: delivery.name, kind: delivery.kind)
+    }
+}
+
+public struct PerformanceNotificationDelivery: Sendable {
+    let category: String
+    let action: String
+    let alertID: String?
+    let ignoreKey: String?
+    let name: String?
+    let kind: LoadAlert.Kind?
+
+    public nonisolated init(_ response: UNNotificationResponse) {
+        let content = response.notification.request.content
+        category = content.categoryIdentifier
+        let info = content.userInfo
+        action = response.actionIdentifier
+        alertID = info["alert"] as? String
+        ignoreKey = info["ignoreKey"] as? String
+        name = info["name"] as? String
+        kind = (info["kind"] as? String).flatMap(LoadAlert.Kind.init(rawValue:))
     }
 }
 
 struct LoadAlertSettingsView: View {
     @ObservedObject var alerts: LoadAlertCenter
     let live: LiveViewModel
+    var embedded = false
     @State private var workloadSearch = ""
     @State private var selectedTab = 0
     @State private var windowOpen = true
@@ -351,9 +405,9 @@ struct LoadAlertSettingsView: View {
                 activity.tabItem { Label("Recent alerts", systemImage: "clock") }.tag(2)
             }.padding(.horizontal, 20).padding(.bottom, 20)
         }
-        .frame(width: 660, height: 740)
+        .frame(width: embedded ? nil : 660, height: embedded ? nil : 740)
         .background(Color.black)
-        .smWorkspaceWindowChrome()
+        .performanceWindowChrome(embedded: embedded)
         .background(MonitoringSurface(model: live, tracksSampling: false, onWindowOpen: { open in
             windowOpen = open
             if open { isPaused = live.paused; updateStatus(); if selectedTab == 1 { updateWorkloads(from: live.snapshot) } }

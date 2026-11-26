@@ -324,7 +324,7 @@ struct AgentHookSetupView: View {
     }
 
     private var configuration: String {
-        let binary = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/PerformanceDaddy").path
+        let binary = Bundle.main.executableURL?.path ?? CommandLine.arguments[0]
         let quoted = "'" + binary.replacingOccurrences(of: "'", with: "'\\''") + "'"
         let events: [String]
         switch provider {
