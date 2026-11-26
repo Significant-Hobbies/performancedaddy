@@ -21,6 +21,7 @@ final class LoadAlertCenter: NSObject, ObservableObject {
         static let quitApp = "performancedaddy.load.app"
         static let stopProcess = "performancedaddy.load.process"
         static let info = "performancedaddy.load.info"
+        static let diagnosis = "performancedaddy.diagnosis.complete"
     }
     private enum Action {
         static let quit = "quit"
@@ -114,7 +115,7 @@ final class LoadAlertCenter: NSObject, ObservableObject {
     }
 
     static func acceptsCategory(_ category: String) -> Bool {
-        [Category.quitApp, Category.stopProcess, Category.info].contains(category)
+        [Category.quitApp, Category.stopProcess, Category.info, Category.diagnosis].contains(category)
     }
 
     static var notificationCategories: Set<UNNotificationCategory> {
@@ -127,8 +128,20 @@ final class LoadAlertCenter: NSObject, ObservableObject {
                 UNNotificationAction(identifier: Action.quit, title: "Stop Process", options: [.destructive]),
                 UNNotificationAction(identifier: Action.mute, title: "Don't Alert for This Process"),
             ], intentIdentifiers: []),
+            UNNotificationCategory(identifier: Category.diagnosis, actions: [], intentIdentifiers: []),
             UNNotificationCategory(identifier: Category.info, actions: [], intentIdentifiers: []),
         ]
+    }
+
+    static func postDiagnosisComplete(defaults: UserDefaults) {
+        guard DaddyCompletionNotices.isAvailable,
+              DaddyCompletionNotices.shouldPost(enabled: DaddyCompletionNotices.isEnabled(defaults),
+                                                 hasVisibleWindow: DaddyCompletionNotices.hasVisibleAppWindow) else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Performance diagnosis complete"
+        content.body = "Open the recorded diagnosis to review the report."
+        content.categoryIdentifier = Category.diagnosis
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
     func unignore(_ key: String) { ignored.removeValue(forKey: key); tracker.reset() }
@@ -338,6 +351,14 @@ extension LoadAlertCenter: UNUserNotificationCenterDelegate {
 
     func deliver(_ delivery: PerformanceNotificationDelivery) async {
         guard Self.acceptsCategory(delivery.category) else { return }
+        if delivery.category == Category.diagnosis {
+            if delivery.action == UNNotificationDefaultActionIdentifier {
+                live?.requestedDestination = "Diagnose"
+                openMainWindow?()
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+            return
+        }
         await handle(action: delivery.action, alertID: delivery.alertID, ignoreKey: delivery.ignoreKey,
                      name: delivery.name, kind: delivery.kind)
     }

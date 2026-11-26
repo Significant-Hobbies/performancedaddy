@@ -34,11 +34,12 @@ public enum PerformanceRoute: String, CaseIterable, Identifiable, Sendable {
     let alerts: LoadAlertCenter
 
     private var activeRoute: PerformanceRoute?
-    private var notificationRoute: PerformanceRoute?
+    private var preservedSelectionRoute: PerformanceRoute?
 
     public init(preferences: UserDefaults = UserDefaults(suiteName: "com.significanthobbies.performancedaddy") ?? .standard) {
         live = LiveViewModel(preferences: preferences)
         diagnosis = DiagnosisViewModel()
+        diagnosis.completionPreferences = preferences
         alerts = LoadAlertCenter(defaults: preferences)
         diagnosis.attach(to: live)
     }
@@ -54,20 +55,26 @@ public enum PerformanceRoute: String, CaseIterable, Identifiable, Sendable {
             let route = PerformanceRoute.allCases.first {
                 $0.dashboardDestination == live.requestedDestination
             } ?? .processes
-            notificationRoute = route
+            preserveContext(for: route)
             openPerformance(route)
         }
         live.start()
     }
 
+    func preserveContext(for route: PerformanceRoute) {
+        preservedSelectionRoute = activeRoute == route ? nil : route
+    }
+
     func enter(_ route: PerformanceRoute) {
-        let fromNotification = notificationRoute == route
-        notificationRoute = nil
+        let preserve = preservedSelectionRoute == route
+        preservedSelectionRoute = nil
         guard activeRoute != route else { return }
         activeRoute = route
         live.inspectPorts = route == .ports
-        live.search = ""
-        if !fromNotification { live.selection = [] }
+        if !preserve {
+            live.search = ""
+            live.selection = []
+        }
         if let page = LivePage(rawValue: route.dashboardDestination) {
             live.sortForPage(page)
         }
@@ -117,6 +124,7 @@ public struct PerformanceWorkspaceView: View {
                     guard destination != route.dashboardDestination,
                           let next = PerformanceRoute.allCases.first(where: { $0.dashboardDestination == destination })
                     else { return }
+                    session.preserveContext(for: next)
                     onNavigate(next)
                 }
                 .id(route)
@@ -149,6 +157,7 @@ public struct PerformanceWorkspaceMenu: View {
     let session: PerformanceWorkspaceSession
     let onNavigate: (PerformanceRoute) -> Void
     @ObservedObject private var live: LiveViewModel
+    @State private var completionEnabled = false
     @Environment(\.openWindow) private var openWindow
     public init(session: PerformanceWorkspaceSession, onNavigate: @escaping (PerformanceRoute) -> Void) {
         self.session = session
@@ -167,7 +176,10 @@ public struct PerformanceWorkspaceMenu: View {
         }
         Button("Open agent wall") { openWindow(id: PerformanceAgentWall.windowID) }
         Button("Performance alerts…") { onNavigate(.alerts) }
-        DaddyCompletionNoticeToggle(title: "Notify when diagnosis finishes")
+        Toggle("Notify when diagnosis finishes", isOn: Binding(get: { completionEnabled }, set: { enabled in
+            Task { completionEnabled = await DaddyCompletionNotices.setEnabled(enabled, defaults: session.diagnosis.completionPreferences) }
+        }))
+        .onAppear { completionEnabled = DaddyCompletionNotices.isEnabled(session.diagnosis.completionPreferences) }
     }
 }
 

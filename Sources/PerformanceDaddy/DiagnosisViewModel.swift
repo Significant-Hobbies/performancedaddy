@@ -6,6 +6,7 @@ import PerformanceCore
 
 @MainActor
 final class DiagnosisViewModel: ObservableObject {
+    var completionPreferences: UserDefaults = .standard
     enum CaptureLength: String, CaseIterable, Identifiable {
         case quick = "15 sec"
         case standard = "2 min"
@@ -190,10 +191,7 @@ final class DiagnosisViewModel: ObservableObject {
                 if let baseline {
                     comparison = engine.compare(before: baseline, after: nextReport)
                 }
-                DaddyCompletionNotices.postIfWindowHidden(
-                    title: "Performance diagnosis complete",
-                    body: "Open PerformanceDaddy to review the report."
-                )
+                LoadAlertCenter.postDiagnosisComplete(defaults: completionPreferences)
             } catch is CancellationError {
                 errorMessage = "The recording was cancelled. No changes were made."
                 report = previousReport

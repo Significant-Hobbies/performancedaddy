@@ -32,6 +32,12 @@ final class PerformanceWorkspaceRoutingTests: XCTestCase {
         XCTAssertTrue(session.live.selection.isEmpty)
         XCTAssertTrue(session.live.inspectPorts)
         XCTAssertEqual(session.live.sortOrder, [KeyPathComparator(\LiveProcess.sortPort)])
+        session.live.search = "reviewed workload"
+        session.live.selection = [ProcessIdentity(pid: 77, started: 12)]
+        session.preserveContext(for: .processes)
+        session.enter(.processes)
+        XCTAssertEqual(session.live.search, "reviewed workload")
+        XCTAssertEqual(session.live.selection, [ProcessIdentity(pid: 77, started: 12)])
         session.enter(.alerts)
         XCTAssertFalse(session.live.inspectPorts)
     }
