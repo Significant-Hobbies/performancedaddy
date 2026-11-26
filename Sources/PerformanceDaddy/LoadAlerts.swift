@@ -329,29 +329,32 @@ extension LoadAlertCenter: UNUserNotificationCenterDelegate {
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             didReceive response: UNNotificationResponse) async {
-        await deliver(Delivery(response))
+        await deliver(PerformanceNotificationDelivery(response))
     }
 
-    struct Delivery: Sendable {
-        let action: String
-        let alertID: String?
-        let ignoreKey: String?
-        let name: String?
-        let kind: LoadAlert.Kind?
-
-        nonisolated init(_ response: UNNotificationResponse) {
-            let info = response.notification.request.content.userInfo
-            action = response.actionIdentifier
-            alertID = info["alert"] as? String
-            ignoreKey = info["ignoreKey"] as? String
-            name = info["name"] as? String
-            kind = (info["kind"] as? String).flatMap(LoadAlert.Kind.init(rawValue:))
-        }
-    }
-
-    func deliver(_ delivery: Delivery) async {
+    func deliver(_ delivery: PerformanceNotificationDelivery) async {
         await handle(action: delivery.action, alertID: delivery.alertID, ignoreKey: delivery.ignoreKey,
                      name: delivery.name, kind: delivery.kind)
+    }
+}
+
+public struct PerformanceNotificationDelivery: Sendable {
+    let category: String
+    let action: String
+    let alertID: String?
+    let ignoreKey: String?
+    let name: String?
+    let kind: LoadAlert.Kind?
+
+    public nonisolated init(_ response: UNNotificationResponse) {
+        let content = response.notification.request.content
+        category = content.categoryIdentifier
+        let info = content.userInfo
+        action = response.actionIdentifier
+        alertID = info["alert"] as? String
+        ignoreKey = info["ignoreKey"] as? String
+        name = info["name"] as? String
+        kind = (info["kind"] as? String).flatMap(LoadAlert.Kind.init(rawValue:))
     }
 }
 

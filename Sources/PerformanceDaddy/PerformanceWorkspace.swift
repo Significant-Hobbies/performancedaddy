@@ -50,10 +50,9 @@ public enum PerformanceRoute: String, CaseIterable, Identifiable, Sendable {
         LoadAlertCenter.notificationCategories
     }
 
-    public func handleNotification(_ response: UNNotificationResponse) async -> Bool {
-        let category = response.notification.request.content.categoryIdentifier
-        guard notificationCategories.contains(where: { $0.identifier == category }) else { return false }
-        await alerts.deliver(LoadAlertCenter.Delivery(response))
+    public func handleNotification(_ delivery: PerformanceNotificationDelivery) async -> Bool {
+        guard notificationCategories.contains(where: { $0.identifier == delivery.category }) else { return false }
+        await alerts.deliver(delivery)
         return true
     }
 
