@@ -53,7 +53,8 @@ struct MonitoringSurface: NSViewRepresentable {
             let visible = window.map { $0.isVisible && !$0.isMiniaturized && $0.occlusionState.contains(.visible) } ?? false
             if tracksSampling { model?.setSurfaceVisible(id, visible: visible) }
             // Ordering out or hiding slows sampling without discarding view
-            // state. Only willClose marks an already-open window closed.
+            // state. A newly attached window can still be ordering front; keep
+            // its dashboard mounted until AppKit reports an actual close.
             if window?.isVisible == true { reportOpen(true) }
         }
 

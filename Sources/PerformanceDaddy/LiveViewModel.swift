@@ -64,12 +64,15 @@ final class LiveViewModel: ObservableObject {
     struct ResourceLeaders {
         let date: Date
         let pressure: String
+        let measuredCPU: Bool
+        let hosted: [ProcessIdentity: Set<ProcessIdentity>]
         let memory: [LoadContributor]
         let cpu: [LoadContributor]
 
         init(_ snapshot: LiveSnapshot) {
             date = snapshot.date
             pressure = snapshot.pressure
+            measuredCPU = snapshot.processes.contains { $0.cpu?.isFinite == true }
             let groups = LoadContributors.group(snapshot.processes, limitTargetsToMembers: true)
             memory = Array(groups.filter { $0.memoryBytes > 0 }.sorted {
                 $0.memoryBytes == $1.memoryBytes ? $0.owner.id.pid < $1.owner.id.pid : $0.memoryBytes > $1.memoryBytes
@@ -77,6 +80,17 @@ final class LiveViewModel: ObservableObject {
             cpu = Array(groups.filter { $0.cpuCores > 0 }.sorted {
                 $0.cpuCores == $1.cpuCores ? $0.owner.id.pid < $1.owner.id.pid : $0.cpuCores > $1.cpuCores
             }.prefix(3))
+            let index = WorkloadIndex(snapshot.processes)
+            var otherProcesses: [ProcessIdentity: Set<ProcessIdentity>] = [:]
+            for work in memory + cpu where work.kind == .app && otherProcesses[work.owner.id] == nil {
+                otherProcesses[work.owner.id] = Self.hostedProcesses(work, in: index)
+            }
+            hosted = otherProcesses
+        }
+
+        static func hostedProcesses(_ work: LoadContributor, in index: WorkloadIndex) -> Set<ProcessIdentity> {
+            guard work.kind == .app else { return [] }
+            return Set(index.descendants(of: work.owner).map(\.id)).subtracting(work.memberIdentities)
         }
     }
 
@@ -86,21 +100,25 @@ final class LiveViewModel: ObservableObject {
         return nil
     }
 
-    func stopMeasuredLeader(_ reviewed: LoadContributor) async -> String {
-        guard !performingAction, review == nil, let snapshot,
-              (0...30).contains(Date().timeIntervalSince(snapshot.date)) else {
+    func stopMeasuredLeader(_ reviewed: LoadContributor, from measurement: ResourceLeaders) async -> String {
+        guard !performingAction, review == nil else { return "Another stop is in progress or under review." }
+        let now = Date()
+        guard let snapshot, (0...30).contains(now.timeIntervalSince(snapshot.date)),
+              (0...30).contains(now.timeIntervalSince(measurement.date)) else {
             return "The measurement expired. Measure again before stopping anything."
         }
-        let leaders = ResourceLeaders(snapshot)
-        guard let current = (leaders.memory + leaders.cpu).first(where: { $0.owner.id == reviewed.owner.id }),
+        let groups = LoadContributors.group(snapshot.processes, limitTargetsToMembers: true)
+        guard (measurement.memory + measurement.cpu).contains(where: { $0.owner.id == reviewed.owner.id }),
+              let current = groups.first(where: { $0.owner.id == reviewed.owner.id }),
               current.kind == reviewed.kind, current.owner.executable == reviewed.owner.executable,
               Set(current.targets.map(\.id)) == Set(reviewed.targets.map(\.id)),
+              ResourceLeaders.hostedProcesses(current, in: index) == measurement.hosted[reviewed.owner.id, default: []],
               leaderRestriction(current) == nil else {
             return "The workload or its targets changed. Measure again to see the current leaders."
         }
-        let result = await requestQuit(current, fromProcesses: true)
+        let result = await requestQuit(current, fromProcesses: true, requestLabel: "Quit from CPU & RAM culprits")
         if result.sent && current.memberIdentities.allSatisfy({ ProcessPresence.inspect($0) == .gone }) {
-            return "\(current.name) exited. Its measured resident memory before the request was \(Self.bytes(current.memoryBytes))."
+            return "\(current.name) exited. Its measured resident memory at review was \(Self.bytes(reviewed.memoryBytes))."
         }
         return result.message
     }
@@ -923,7 +941,7 @@ final class LiveViewModel: ObservableObject {
         await requestQuit(contributor, fromProcesses: false).message
     }
 
-    private func requestQuit(_ contributor: LoadContributor, fromProcesses: Bool) async -> (sent: Bool, message: String) {
+    private func requestQuit(_ contributor: LoadContributor, fromProcesses: Bool, requestLabel: String? = nil) async -> (sent: Bool, message: String) {
         guard !performingAction, review == nil else { return (false, "Another stop is under review. Open PerformanceDaddy to continue.") }
         guard contributor.owner.stopRestriction == nil else { return (false, "\(contributor.name) is protected and was not quit.") }
         performingAction = true
@@ -940,7 +958,7 @@ final class LiveViewModel: ObservableObject {
             let sent = app.terminate()
             requestSent = sent
             lifecycle.record(contributor.owner, at: date, force: false, signalSent: sent, observed: beforeStop,
-                             request: fromProcesses ? "Reviewed quit from Processes" : "Quit request from a load alert")
+                             request: requestLabel ?? (fromProcesses ? "Reviewed quit from Processes" : "Quit request from a load alert"))
             message = sent ? "Asked \(contributor.name) to quit. It may ask you to save first."
                 : "macOS did not accept the quit request for \(contributor.name)."
         } else {
@@ -959,8 +977,8 @@ final class LiveViewModel: ObservableObject {
         }
         persistLifecycle()
         try? await Task.sleep(for: .seconds(1))
-        performingAction = false
         await refresh(background: !hasVisibleSurface)
+        performingAction = false
         return (requestSent, message)
     }
 

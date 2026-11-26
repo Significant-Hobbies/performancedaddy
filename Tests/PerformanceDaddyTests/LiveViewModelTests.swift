@@ -294,14 +294,27 @@ final class LiveViewModelTests: XCTestCase {
         let reviewed = try XCTUnwrap(leaders.memory.first)
         XCTAssertEqual(reviewed.owner.id, worker.id)
         model.snapshot = reading([], date: Date())
-        let missing = await model.stopMeasuredLeader(reviewed)
+        let missing = await model.stopMeasuredLeader(reviewed, from: leaders)
         XCTAssertTrue(missing.contains("changed"))
         model.snapshot = reading([worker], date: Date().addingTimeInterval(-60))
-        let expired = await model.stopMeasuredLeader(reviewed)
+        let expired = await model.stopMeasuredLeader(reviewed, from: leaders)
         XCTAssertTrue(expired.contains("expired"))
         XCTAssertTrue(child.isRunning)
+        let stale = LiveViewModel.ResourceLeaders(reading([worker], date: Date().addingTimeInterval(-60)))
         model.snapshot = reading([worker])
-        _ = await model.stopMeasuredLeader(reviewed)
+        let staleMessage = await model.stopMeasuredLeader(reviewed, from: stale)
+        XCTAssertTrue(staleMessage.contains("expired"))
+        model.performingAction = true
+        let busy = await model.stopMeasuredLeader(reviewed, from: leaders)
+        XCTAssertTrue(busy.contains("in progress"))
+        model.performingAction = false
+        let larger = (1...3).map { n in
+            LiveProcess(id: .init(pid: Int32(90_010+n), started: 10), parent: 1, uid: getuid(), name: "larger", executable: "/tmp/larger", directory: "", cpu: 100, memory: worker.memory + 1)
+        }
+        model.snapshot = reading([worker] + larger)
+        XCTAssertFalse(LiveViewModel.ResourceLeaders(try XCTUnwrap(model.snapshot)).memory.contains { $0.owner.id == worker.id })
+        let stopped = await model.stopMeasuredLeader(reviewed, from: leaders)
+        XCTAssertTrue(stopped.contains("exited"), stopped)
         XCTAssertEqual(model.outcomes.filter(\.signalSent).map(\.process.id), [worker.id])
     }
 
@@ -314,6 +327,30 @@ final class LiveViewModelTests: XCTestCase {
         XCTAssertEqual(first.owner.id, parent.id)
         XCTAssertEqual(first.targets.map(\.id), [parent.id])
         XCTAssertNil(model.leaderRestriction(first))
+    }
+
+    func testResourceLeadersKeepHostedWorkAndNestedAgentScopesDistinct() async throws {
+        let model = LiveViewModel()
+        let host = LiveProcess(id: .init(pid: 90_001, started: 10), parent: 1, uid: getuid(), name: "Host",
+                               executable: "/Applications/Host.app/Contents/MacOS/Host", directory: "", cpu: 1, memory: 90_000)
+        let outer = process(90_002, parent: host.id.pid, name: "codex", cpu: 90)
+        let inner = process(90_003, parent: outer.id.pid, name: "claude", cpu: 80)
+        let build = process(90_004, parent: outer.id.pid, name: "build", cpu: 20)
+        func reading(_ processes: [LiveProcess]) -> LiveSnapshot {
+            LiveSnapshot(date: Date(), processes: processes, system: snapshot([]).system,
+                         pressure: "Normal", compressed: nil, unavailableProcesses: 0, portsDate: Date(), scanSeconds: 0.01)
+        }
+        let sample = reading([host, outer, inner, build])
+        let leaders = LiveViewModel.ResourceLeaders(sample)
+        let app = try XCTUnwrap(leaders.memory.first { $0.owner.id == host.id })
+        XCTAssertEqual(model.leaderRestriction(app), "App quit unavailable")
+        XCTAssertEqual(leaders.hosted[host.id], Set([outer.id, inner.id, build.id]))
+        let agent = try XCTUnwrap(leaders.cpu.first { $0.owner.id == outer.id })
+        XCTAssertEqual(Set(agent.targets.map(\.id)), Set([outer.id, build.id]))
+        model.snapshot = reading([host, outer, inner])
+        let result = await model.stopMeasuredLeader(agent, from: leaders)
+        XCTAssertTrue(result.contains("targets changed"))
+        XCTAssertTrue(model.outcomes.isEmpty)
     }
 
     func testMissingSampleDoesNotConfirmExit() {
