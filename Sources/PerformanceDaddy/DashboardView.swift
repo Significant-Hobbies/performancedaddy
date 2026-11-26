@@ -7,6 +7,7 @@ struct DashboardView: View {
     @ObservedObject var model: DiagnosisViewModel
     @ObservedObject var live: LiveViewModel
     @State private var destination = "Processes"
+    @State private var showingLeaders = false
     @State private var showingDeleteRecentRuns = false
     @State private var showingDeleteBaseline = false
     @State private var showingReplaceBaseline = false
@@ -29,11 +30,16 @@ struct DashboardView: View {
             VStack(spacing: 0) {
                 SMWorkspaceScopeBar(LivePage(rawValue: destination) == nil ? "Investigation" : "Live diagnostics",
                                     systemImage: "waveform.path.ecg", detail: "Local to this Mac") {
-                    EmptyView()
+                    Button("Find CPU & RAM culprits") { showingLeaders = true }
+                        .buttonStyle(SMMacButtonStyle(.primary))
+                        .accessibilityIdentifier("find-resource-culprits")
                 }
             ZStack {
                 if let page = LivePage(rawValue: destination) {
-                    LiveWorkloadsView(model: live, page: page)
+                    LiveWorkloadsView(model: live, page: page, recordSlowdown: {
+                        destination = "Diagnose"
+                        if !model.isRecording { model.markSlowMoment() }
+                    })
                 } else if destination == "Configuration" {
                     ConfigurationView()
                 } else if destination == "App access" {
@@ -108,6 +114,7 @@ struct DashboardView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("performance-workspace")
+        .sheet(isPresented: $showingLeaders) { ResourceLeadersView(model: live) }
         .sheet(item: $model.importedProfile) {
             ImportedProfileView(profile: $0).buttonStyle(SMMacButtonStyle())
         }

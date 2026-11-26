@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
@@ -10,7 +13,7 @@ test('native workspace preserves process, alert and lifecycle behavior', { timeo
   const result = spawnSync('npx', ['--offline', 'xcodebuildmcp', 'swift-package', 'test', '--json', JSON.stringify({
     packagePath,
     configuration: 'debug',
-    filter: 'LiveViewModelTests|MenuLifecycleTests|LoadAlertCenterTests|MonitoringSurfaceTests|PerformanceUIResourcesTests|DecodedArtworkTests',
+    filter: 'ProcessCPUComparisonTests|DiagnosticCaptureOptionsTests|LiveViewModelTests|MenuLifecycleTests|LoadAlertCenterTests|MonitoringSurfaceTests|PerformanceUIResourcesTests|DecodedArtworkTests',
   })], { cwd: packagePath, encoding: 'utf8', timeout: 110_000, maxBuffer: 32 * 1024 * 1024 });
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   process.stdout.write(output);
@@ -18,5 +21,11 @@ test('native workspace preserves process, alert and lifecycle behavior', { timeo
   assert.equal(result.status, 0, 'XcodeBuildMCP must exit successfully');
   const summary = output.match(/(\d+) tests passed, 0 failed, 0 skipped/);
   assert.ok(summary, 'Runner must report executed native tests with no failures or skips');
+  const log = output.match(/Build Logs: (.+\.log)/)?.[1].trim();
+  assert.ok(log?.startsWith('~/Library/Developer/XcodeBuildMCP/workspaces/'), 'Expected a local native test log');
+  const native = readFileSync(join(homedir(), log.slice(2)), 'utf8');
+  for (const suite of ['ProcessCPUComparisonTests', 'DiagnosticCaptureOptionsTests']) {
+    assert.ok(native.includes("Test Suite '" + suite + "' passed"), suite + ' must execute and pass');
+  }
   assert.ok(Number(summary[1]) >= 60, 'The complete focused native suite must execute');
 });

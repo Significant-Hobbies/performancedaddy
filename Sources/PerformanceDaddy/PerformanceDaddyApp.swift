@@ -13,8 +13,11 @@ enum PerformanceDaddyMain {
         if arguments.first == "--capture-diagnostic" {
             PerformanceDiagnosticCommand.run(arguments: arguments)
         }
+        if arguments.first == "--compare-diagnostic" {
+            ProcessComparisonCommand.run(arguments: arguments)
+        }
         if DiagnosticCaptureOptions.hasPIDOption(arguments) {
-            FileHandle.standardError.write(Data("--pid is supported only with --capture-diagnostic.\n".utf8))
+            FileHandle.standardError.write(Data("--pid requires --capture-diagnostic or --compare-diagnostic.\n".utf8))
             exit(2)
         }
         if CommandLine.arguments.contains("--check-ui-resources") {

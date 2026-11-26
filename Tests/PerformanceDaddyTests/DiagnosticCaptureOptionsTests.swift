@@ -2,6 +2,15 @@ import XCTest
 @testable import PerformanceDaddy
 
 final class DiagnosticCaptureOptionsTests: XCTestCase {
+    func testComparisonOptionsRequireTwoFilesAndOnePositivePID() {
+        let args = ["--compare-diagnostic", "one.json", "two.json", "--pid"]
+        XCTAssertEqual(ProcessComparisonCommand.options(args + ["47"])?.pid, 47)
+        for value in ["", "+47", "-1", "0", "1.1", "9000000000"] {
+            XCTAssertNil(ProcessComparisonCommand.options(args + [value]))
+        }
+        XCTAssertNil(ProcessComparisonCommand.options(args + ["47", "--pid", "48"]))
+    }
+
     func testLegacyDiagnosticOptionsKeepSystemEnumerationDefault() {
         let options = DiagnosticCaptureOptions.parse(arguments: ["--capture-diagnostic", "10", "/tmp/capture.json"])
         XCTAssertEqual(options, DiagnosticCaptureOptions(duration: 10, outputPath: "/tmp/capture.json", selectedSameUserPIDs: nil))
